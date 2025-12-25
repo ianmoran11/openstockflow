@@ -1,0 +1,323 @@
+---
+title: "Quick Start Guide"
+author: "Ian Moran"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Quick Start Guide}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+```{r include = FALSE}
+# Load package files
+source("../R/classes.R")
+source("../R/primitives.R")
+source("../R/diagram.R")
+source("../R/algebraic-api.R")
+source("../R/semantics.R")
+source("../R/visualization.R")
+library(magrittr)
+```
+
+## What is openstockflow?
+
+**openstockflow** lets you build mathematical models using stock-flow diagrams—a visual way to represent systems with accumulations (stocks) and rates of change (flows).
+
+Think of it like plumbing:
+- **Stocks** are tanks that hold quantities
+- **Flows** are pipes that move quantities between tanks
+- The package automatically generates differential equations and solves them
+
+## 5-Minute Tutorial
+
+### Step 1: Create a Simple Model
+
+Let's model exponential decay: a quantity that decreases over time.
+
+```{r decay}
+decay_model <- stock_flow_diagram(reset_ids = TRUE) %>%
+  add_stock("X", initial = 100) %>%
+  add_flow("decay",
+    from = "X",
+    to = NULL,  # NULL means "out of the system"
+    rate = function(inputs, params) {
+      params$k * inputs$X
+    }
+  )
+
+# View the structure
+print(decay_model)
+```
+
+This creates the equation: $\frac{dX}{dt} = -k \cdot X$
+
+### Step 2: Solve It
+
+```{r decay_solve, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  result <- solve_diagram(
+    decay_model,
+    times = seq(0, 10, by = 0.5),
+    params = c(k = 0.2)
+  )
+
+  # View first few rows
+  head(result, 10)
+}
+```
+
+### Step 3: Visualize It
+
+```{r decay_plot, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  plot_solution(result)
+}
+```
+
+The analytical solution is $X(t) = X_0 e^{-kt} = 100 e^{-0.2t}$
+
+## Example: Population Growth with Carrying Capacity
+
+Now something more interesting: logistic growth where a population grows but slows as it approaches a maximum capacity.
+
+```{r logistic}
+logistic <- stock_flow_diagram(reset_ids = TRUE) %>%
+  add_stock("Population", initial = 10) %>%
+  add_flow("births",
+    from = NULL,
+    to = "Population",
+    rate = function(inputs, params) {
+      # Growth slows as population approaches carrying capacity
+      growth_rate <- params$r * (1 - inputs$Population / params$K)
+      growth_rate * inputs$Population
+    }
+  )
+
+print(logistic)
+```
+
+This implements: $\frac{dP}{dt} = r \cdot P \cdot (1 - \frac{P}{K})$
+
+```{r logistic_solve, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  logistic_result <- solve_diagram(
+    logistic,
+    times = seq(0, 50, by = 0.5),
+    params = c(r = 0.5, K = 1000)
+  )
+
+  # Plot growth curve
+  plot_solution(logistic_result)
+
+  # Check that it approaches carrying capacity
+  cat("Final population:", tail(logistic_result$Population, 1), "\n")
+  cat("Carrying capacity:", 1000, "\n")
+}
+```
+
+## Example: Two-Stock System
+
+A predator-prey model (simplified Lotka-Volterra):
+
+```{r predator_prey}
+predator_prey <- stock_flow_diagram(reset_ids = TRUE) %>%
+  add_stock("Prey", initial = 100) %>%
+  add_stock("Predator", initial = 10) %>%
+  add_flow("prey_growth",
+    from = NULL,
+    to = "Prey",
+    rate = function(inputs, params) {
+      params$alpha * inputs$Prey
+    }
+  ) %>%
+  add_flow("predation",
+    from = "Prey",
+    to = "Predator",
+    rate = function(inputs, params) {
+      params$beta * inputs$Prey * inputs$Predator
+    }
+  ) %>%
+  add_flow("predator_death",
+    from = "Predator",
+    to = NULL,
+    rate = function(inputs, params) {
+      params$delta * inputs$Predator
+    }
+  )
+
+print(predator_prey)
+```
+
+Equations:
+- $\frac{d(\text{Prey})}{dt} = \alpha \cdot \text{Prey} - \beta \cdot \text{Prey} \cdot \text{Predator}$
+- $\frac{d(\text{Predator})}{dt} = \beta \cdot \text{Prey} \cdot \text{Predator} - \delta \cdot \text{Predator}$
+
+```{r predator_prey_solve, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  pp_result <- solve_diagram(
+    predator_prey,
+    times = seq(0, 100, by = 0.1),
+    params = c(alpha = 0.1, beta = 0.002, delta = 0.05)
+  )
+
+  # Plot both populations
+  plot_solution(pp_result)
+
+  # Phase plot shows cyclic dynamics
+  phase_plot(pp_result, "Prey", "Predator")
+}
+```
+
+## Alternative Syntax: Algebraic API
+
+For those who prefer mathematical notation, there's an algebraic API:
+
+```{r algebraic}
+# Define components
+S <- stock("S", initial = 999)
+I <- stock("I", initial = 1)
+R <- stock("R", initial = 0)
+
+infection <- flow("infection",
+  rate = function(inputs, params) {
+    params$beta * inputs$S * inputs$I / 1000
+  }
+)
+
+recovery <- flow("recovery",
+  rate = function(inputs, params) {
+    params$gamma * inputs$I
+  }
+)
+
+# Compose with operators: %->% connects, %+% combines
+sir <- S %+% I %+% R %+%
+  (S %->% infection %->% I) %+%
+  (I %->% recovery %->% R)
+
+sir_diagram <- finalize(sir, reset_ids = TRUE)
+print(sir_diagram)
+```
+
+This creates the classic SIR epidemic model!
+
+## Key Concepts Summary
+
+### Stocks
+- Represent accumulations (population, water in tank, money in account)
+- Have initial values
+- Change over time according to flows
+
+### Flows
+- Represent rates of change
+- Have `from` and `to` stocks (or NULL for external sources/sinks)
+- Defined by rate functions that depend on:
+  - Current stock values (`inputs$StockName`)
+  - Parameters (`params$ParamName`)
+
+### Parameters
+- Constants that control model behavior
+- Passed to `solve_diagram()`
+- Examples: birth rate, infection rate, decay constant
+
+### Rate Functions
+Flow rate functions have the signature:
+```r
+function(inputs, params) {
+  # inputs$X gives current value of stock X
+  # params$k gives parameter k
+  # return a single numeric value (the rate)
+}
+```
+
+## What's Next?
+
+- **Introduction vignette**: More examples including SEIR model with population conservation
+- **Composition**: Learn to build complex models from simpler components (future)
+- **Stratification**: Add dimensions like age groups or geographic regions (future)
+
+## Common Patterns
+
+### Conservation
+
+When modeling conserved quantities:
+
+```{r conservation_example, eval = FALSE}
+model %>%
+  add_sum_variable("Total", stocks = c("Stock1", "Stock2", "Stock3"))
+```
+
+The total will remain constant.
+
+### Feedback Loops
+
+Stocks can influence their own flows:
+
+```{r feedback_example, eval = FALSE}
+model %>%
+  add_stock("Population", initial = 100) %>%
+  add_flow("growth",
+    from = NULL,
+    to = "Population",
+    rate = function(inputs, params) {
+      # Population influences its own growth rate
+      params$r * inputs$Population
+    }
+  )
+```
+
+### Coupled Systems
+
+Multiple stocks affecting each other:
+
+```{r coupled_example, eval = FALSE}
+model %>%
+  add_stock("A", initial = 100) %>%
+  add_stock("B", initial = 50) %>%
+  add_flow("A_to_B",
+    from = "A",
+    to = "B",
+    rate = function(inputs, params) {
+      params$k1 * inputs$A
+    }
+  ) %>%
+  add_flow("B_to_A",
+    from = "B",
+    to = "A",
+    rate = function(inputs, params) {
+      params$k2 * inputs$B
+    }
+  )
+```
+
+## Tips
+
+1. **Start simple**: Build up complexity gradually
+2. **Use meaningful names**: Stock and flow names become equation variable names
+3. **Check units**: Make sure rates have correct dimensions
+4. **Validate**: Check that your model behaves as expected for extreme parameter values
+5. **Visualize first**: Use `plot(diagram)` to see structure before solving
+
+## Getting Help
+
+```{r eval = FALSE}
+?stock_flow_diagram  # Help on diagram construction
+?solve_diagram       # Help on solving
+?plot.StockFlowDiagram  # Help on visualization
+```
+
+## Session Info
+
+```{r session_info}
+sessionInfo()
+```

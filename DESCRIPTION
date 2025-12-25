@@ -1,0 +1,43 @@
+Package: openstockflow
+Type: Package
+Title: Categorical Stock-Flow Modeling with Compositional Diagrams
+Version: 0.1.0
+Authors@R: c(
+    person("Ian", "Moran", email = "your.email@example.com", role = c("aut", "cre"))
+    )
+Description: Implements categorical stock-flow modeling using decorated cospans
+    and functorial semantics. Enables compositional model building where complex
+    systems are assembled from simpler components through categorical operations.
+    Supports stratification via pullbacks (e.g., by age, sex, risk group),
+    ODE generation, and integration with tidyverse/tidygraph ecosystem.
+    Based on the mathematical framework described in Baez et al. (2022).
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.3
+Depends:
+    R (>= 4.0.0)
+Imports:
+    methods,
+    deSolve (>= 1.35),
+    tibble (>= 3.0.0)
+Suggests:
+    tidygraph (>= 1.2.0),
+    ggraph (>= 2.0.0),
+    igraph (>= 1.3.0),
+    purrr (>= 1.0.0),
+    dplyr (>= 1.0.0),
+    ggplot2 (>= 3.3.0),
+    testthat (>= 3.0.0),
+    knitr (>= 1.40),
+    rmarkdown (>= 2.0)
+VignetteBuilder: knitr
+URL: https://github.com/ianmoran/openstockflow
+BugReports: https://github.com/ianmoran/openstockflow/issues
+Collate:
+    'classes.R'
+    'primitives.R'
+    'diagram.R'
+    'algebraic-api.R'
+    'semantics.R'
+    'visualization.R'

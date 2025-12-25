@@ -1,0 +1,417 @@
+---
+title: "Introduction to openstockflow"
+author: "Ian Moran"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to openstockflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+## Overview
+
+**openstockflow** is the first R package to implement categorical stock-flow modeling using decorated cospans and functorial semantics. This approach, pioneered in the StockFlow.jl Julia package, enables compositional model building where complex systems are assembled from simpler components through categorical operations.
+
+### Key Features
+
+- **Compositional modeling**: Build complex models from simple components
+- **Functorial semantics**: Formal separation of diagram syntax from ODE semantics
+- **Dual API**: Traditional pipe-based and algebraic categorical notation
+- **Integration**: Seamless integration with deSolve for ODE solving
+- **Visualization**: Multiple visualization options including ggraph and Graphviz
+
+## Installation
+
+```{r eval = FALSE}
+# Install from GitHub (when available)
+# devtools::install_github("ianmoran/openstockflow")
+
+# For now, load from source
+library(openstockflow)
+```
+
+```{r include = FALSE}
+# Load package files
+source("../R/classes.R")
+source("../R/primitives.R")
+source("../R/diagram.R")
+source("../R/algebraic-api.R")
+source("../R/semantics.R")
+source("../R/visualization.R")
+library(magrittr)
+```
+
+## Basic Concepts
+
+### Stock-Flow Diagrams
+
+A **stock-flow diagram** consists of:
+
+- **Stocks** (rectangles): State variables representing accumulations
+- **Flows** (thick arrows): Rate processes that move quantities between stocks
+- **Links** (thin arrows): Information dependencies
+- **Variables**: Auxiliary computations and aggregations
+
+### Mathematical Foundation
+
+Stock-flow diagrams are functors $F: H \to \mathbf{FinSet}$ from a primitive category $H$ to finite sets, where:
+
+- Objects: $\{\text{stock}, \text{flow}, \text{link}\}$
+- Morphisms: $u, d: \text{flow} \to \text{stock}$ (upstream/downstream) and $s: \text{link} \to \text{stock}$, $t: \text{link} \to \text{flow}$
+
+The **ODE semantics** for a stock $\sigma$ is:
+
+$$\frac{d\sigma}{dt} = \sum_{f \in F(d)^{-1}(\sigma)} \phi_f - \sum_{f \in F(u)^{-1}(\sigma)} \phi_f$$
+
+That is: rate of change = inflows - outflows.
+
+## Example 1: SIR Epidemic Model
+
+The classic SIR (Susceptible-Infected-Recovered) model divides a population into three compartments.
+
+### Traditional API
+
+```{r sir_traditional}
+sir <- stock_flow_diagram(reset_ids = TRUE) %>%
+  add_stock("S", initial = 999) %>%
+  add_stock("I", initial = 1) %>%
+  add_stock("R", initial = 0) %>%
+  add_flow("infection",
+    from = "S",
+    to = "I",
+    rate = function(inputs, params) {
+      params$beta * inputs$S * inputs$I / 1000
+    }
+  ) %>%
+  add_flow("recovery",
+    from = "I",
+    to = "R",
+    rate = function(inputs, params) {
+      params$gamma * inputs$I
+    }
+  )
+
+# View diagram structure
+print(sir)
+```
+
+### Algebraic API
+
+The same model using categorical notation:
+
+```{r sir_algebraic}
+# Define stocks
+S <- stock("S", initial = 999)
+I <- stock("I", initial = 1)
+R <- stock("R", initial = 0)
+
+# Define flows
+infection <- flow("infection",
+  rate = function(inputs, params) {
+    params$beta * inputs$S * inputs$I / 1000
+  }
+)
+
+recovery <- flow("recovery",
+  rate = function(inputs, params) {
+    params$gamma * inputs$I
+  }
+)
+
+# Build diagram using %->% and %+%
+sir_alg <- S %+% I %+% R %+%
+  (S %->% infection %->% I) %+%
+  (I %->% recovery %->% R)
+
+sir_diagram <- finalize(sir_alg, reset_ids = TRUE)
+```
+
+### Visualization
+
+```{r sir_viz, eval = FALSE}
+# Plot diagram structure
+plot(sir)
+
+# Export to Graphviz DOT format
+dot_str <- to_graphviz(sir)
+cat(dot_str)
+
+# With ggraph (if installed)
+library(ggraph)
+plot(sir, layout = "sugiyama")
+```
+
+### Simulation
+
+```{r sir_simulate, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  # Solve ODE system
+  result <- solve_diagram(
+    sir,
+    times = seq(0, 100, by = 1),
+    params = c(beta = 0.5, gamma = 0.1)
+  )
+
+  # View results
+  head(result)
+
+  # Plot solution
+  plot_solution(result)
+}
+```
+
+## Example 2: SEIR Model with Population Conservation
+
+The SEIR model adds an Exposed (E) compartment and uses a sum variable to track total population.
+
+```{r seir}
+seir <- stock_flow_diagram(reset_ids = TRUE) %>%
+  add_stock("S", initial = 1000) %>%
+  add_stock("E", initial = 0) %>%
+  add_stock("I", initial = 1) %>%
+  add_stock("R", initial = 0) %>%
+  add_sum_variable("N", stocks = c("S", "E", "I", "R")) %>%
+  add_flow("infection",
+    from = "S",
+    to = "E",
+    rate = function(inputs, params) {
+      params$beta * inputs$S * inputs$I / inputs$N
+    }
+  ) %>%
+  add_flow("progression",
+    from = "E",
+    to = "I",
+    rate = function(inputs, params) {
+      params$sigma * inputs$E
+    }
+  ) %>%
+  add_flow("recovery",
+    from = "I",
+    to = "R",
+    rate = function(inputs, params) {
+      params$gamma * inputs$I
+    }
+  ) %>%
+  add_link(from = "N", to = "infection")
+
+print(seir)
+```
+
+### SEIR Simulation
+
+```{r seir_simulate, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  seir_result <- solve_diagram(
+    seir,
+    times = seq(0, 200, by = 1),
+    params = c(beta = 0.5, sigma = 0.2, gamma = 0.1)
+  )
+
+  # Verify population conservation
+  total_pop <- seir_result$S + seir_result$E + seir_result$I + seir_result$R
+  cat("Population conservation:",
+      all(abs(total_pop - 1001) < 1e-6), "\n")
+
+  # Plot dynamics
+  plot_solution(seir_result)
+
+  # Phase plot
+  phase_plot(seir_result, "S", "I")
+}
+```
+
+## Example 3: Stock and Flow with Inflows/Outflows
+
+A water tank with constant inflow and proportional outflow.
+
+```{r tank}
+tank <- stock_flow_diagram(reset_ids = TRUE) %>%
+  add_stock("Water", initial = 50) %>%
+  add_flow("fill",
+    from = NULL,  # NULL indicates inflow from outside
+    to = "Water",
+    rate = function(inputs, params) {
+      params$inflow_rate
+    }
+  ) %>%
+  add_flow("drain",
+    from = "Water",
+    to = NULL,  # NULL indicates outflow to outside
+    rate = function(inputs, params) {
+      params$outflow_rate * inputs$Water
+    }
+  )
+
+print(tank)
+```
+
+At equilibrium, inflow = outflow:
+$$\text{inflow\_rate} = \text{outflow\_rate} \times \text{Water}$$
+
+So: $\text{Water}_{\text{eq}} = \frac{\text{inflow\_rate}}{\text{outflow\_rate}}$
+
+```{r tank_simulate, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  tank_result <- solve_diagram(
+    tank,
+    times = seq(0, 50, by = 0.5),
+    params = c(inflow_rate = 10, outflow_rate = 0.1)
+  )
+
+  # Equilibrium should be 10 / 0.1 = 100
+  cat("Final water level:", tail(tank_result$Water, 1), "\n")
+  cat("Expected equilibrium:", 10 / 0.1, "\n")
+
+  plot_solution(tank_result)
+}
+```
+
+## Example 4: Auxiliary Variables
+
+Models can include auxiliary variables that depend on stocks or other variables.
+
+```{r auxiliary}
+# Model with intermediate computation
+growth_model <- stock_flow_diagram(reset_ids = TRUE) %>%
+  add_stock("Population", initial = 100) %>%
+  add_variable("GrowthRate",
+    expression = function(state, params, var_values) {
+      # Growth rate decreases as population approaches carrying capacity
+      params$r * (1 - state["Population"] / params$K)
+    }
+  ) %>%
+  add_flow("growth",
+    from = NULL,
+    to = "Population",
+    rate = function(inputs, params) {
+      inputs$GrowthRate * inputs$Population
+    }
+  ) %>%
+  add_link(from = "GrowthRate", to = "growth") %>%
+  add_link(from = "Population", to = "growth")
+
+print(growth_model)
+```
+
+## Workflow Summary
+
+The typical workflow with openstockflow is:
+
+1. **Define the model structure**
+   - Stocks: state variables
+   - Flows: rate processes
+   - Variables: auxiliary computations
+   - Links: dependencies
+
+2. **Generate ODE system**
+   ```r
+   ode_func <- generate_ode(diagram)
+   ```
+
+3. **Solve with deSolve**
+   ```r
+   result <- solve_diagram(diagram, times, params)
+   ```
+
+4. **Visualize and analyze**
+   ```r
+   plot(diagram)        # Structure
+   plot_solution(result)  # Dynamics
+   phase_plot(result, "X", "Y")  # State space
+   ```
+
+## Design Principles
+
+### Compositional by Design
+
+Stock-flow diagrams are represented as functors, enabling:
+
+- **Local reasoning**: Understand components independently
+- **Categorical composition**: Combine models via decorated cospans
+- **Stratification**: Refine models via pullbacks (e.g., by age, sex)
+
+### Type Safety
+
+S4 classes with validation ensure:
+
+- Stocks have finite initial values
+- Flows connect to existing stocks
+- Dependencies are well-formed
+
+### Functional Semantics
+
+The separation of syntax (diagram) and semantics (ODE) allows:
+
+- Different interpretations (stochastic, discrete, etc.)
+- Formal verification of properties
+- Automated model transformations
+
+## Mathematical Guarantees
+
+### Population Conservation
+
+When modeling conserved quantities (like total population), sum variables ensure conservation:
+
+```{r conservation, eval = FALSE}
+diagram %>%
+  add_sum_variable("Total", stocks = c("S", "I", "R"))
+```
+
+The ODE system automatically satisfies:
+$$\frac{d(\text{Total})}{dt} = 0$$
+
+### Equilibrium Analysis
+
+At equilibrium, all derivatives are zero:
+$$\sum \text{inflows}_\sigma = \sum \text{outflows}_\sigma \quad \forall \sigma$$
+
+Use `solve_diagram()` to find equilibria numerically.
+
+## Performance Considerations
+
+For large models:
+
+1. **Pre-compile**: Generate ODE function once, reuse for multiple simulations
+   ```r
+   ode_func <- generate_ode(diagram)
+   # Use ode_func multiple times with different params
+   ```
+
+2. **Vectorization**: Flow rate functions should use vectorized operations
+
+3. **Sparse systems**: Use appropriate ODE solver methods (future: compiled C code)
+
+## Next Steps
+
+- **Composition**: Learn to compose models via decorated cospans (future vignette)
+- **Stratification**: Refine models by age, sex, or other dimensions (future vignette)
+- **tidygraph integration**: Work with diagrams as tbl_graph objects (future vignette)
+
+## References
+
+1. Baez, J. C., Li, X., Libkind, S., Osgood, N., & Redekopp, E. (2022).
+   "Compositional Modeling with Stock and Flow Diagrams."
+   arXiv:2205.08373.
+
+2. Libkind, S., Baas, A., Halter, M., Patterson, E., & Fairbanks, J. (2022).
+   "A Categorical Framework for Modeling with Stock and Flow Diagrams."
+   arXiv:2211.01290.
+
+3. StockFlow.jl: Compositional Stock and Flow Modeling in Julia
+   https://github.com/AlgebraicJulia/StockFlow.jl
+
+## Session Info
+
+```{r session_info}
+sessionInfo()
+```
