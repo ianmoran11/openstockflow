@@ -38,6 +38,7 @@ Collate:
     'classes.R'
     'primitives.R'
     'diagram.R'
+    'composition.R'
     'algebraic-api.R'
     'semantics.R'
     'visualization.R'
