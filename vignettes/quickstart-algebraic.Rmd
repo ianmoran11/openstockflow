@@ -1,0 +1,429 @@
+---
+title: "Quick Start Guide (Algebraic API)"
+author: "Ian Moran"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Quick Start Guide (Algebraic API)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+```{r include = FALSE}
+# Load package files
+source("../R/classes.R")
+source("../R/primitives.R")
+source("../R/diagram.R")
+source("../R/algebraic-api.R")
+source("../R/semantics.R")
+source("../R/visualization.R")
+```
+
+## What is openstockflow?
+
+**openstockflow** lets you build mathematical models using stock-flow diagrams—a visual way to represent systems with accumulations (stocks) and rates of change (flows).
+
+Think of it like plumbing:
+- **Stocks** are tanks that hold quantities
+- **Flows** are pipes that move quantities between tanks
+- The package automatically generates differential equations and solves them
+
+This guide demonstrates the **algebraic API**, which uses mathematical notation and operators for model construction.
+
+## 5-Minute Tutorial
+
+### Step 1: Create a Simple Model
+
+Let's model exponential decay: a quantity that decreases over time.
+
+```{r decay}
+# Define components
+X <- stock("X", initial = 100)
+
+decay <- flow("decay",
+  rate = function(inputs, params) {
+    params$k * inputs$X
+  }
+)
+
+# Compose: X flows out via decay
+decay_model <- X %+% (X %->% decay %->% NULL)
+decay_diagram <- finalize(decay_model, reset_ids = TRUE)
+
+# View the structure
+print(decay_diagram)
+```
+
+This creates the equation: $\frac{dX}{dt} = -k \cdot X$
+
+### Step 2: Solve It
+
+```{r decay_solve, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  result <- solve_diagram(
+    decay_diagram,
+    times = seq(0, 10, by = 0.5),
+    params = c(k = 0.2)
+  )
+
+  # View first few rows
+  head(result, 10)
+}
+```
+
+### Step 3: Visualize It
+
+```{r decay_plot, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  plot_solution(result)
+}
+```
+
+The analytical solution is $X(t) = X_0 e^{-kt} = 100 e^{-0.2t}$
+
+## Example: Population Growth with Carrying Capacity
+
+Now something more interesting: logistic growth where a population grows but slows as it approaches a maximum capacity.
+
+```{r logistic}
+# Define stock
+P <- stock("Population", initial = 10)
+
+# Define flow
+births <- flow("births",
+  rate = function(inputs, params) {
+    # Growth slows as population approaches carrying capacity
+    growth_rate <- params$r * (1 - inputs$Population / params$K)
+    growth_rate * inputs$Population
+  }
+)
+
+# Compose: births flow into Population
+logistic <- (NULL %->% births %->% P) %+% P
+logistic_diagram <- finalize(logistic, reset_ids = TRUE)
+
+print(logistic_diagram)
+```
+
+This implements: $\frac{dP}{dt} = r \cdot P \cdot (1 - \frac{P}{K})$
+
+```{r logistic_solve, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  logistic_result <- solve_diagram(
+    logistic_diagram,
+    times = seq(0, 50, by = 0.5),
+    params = c(r = 0.5, K = 1000)
+  )
+
+  # Plot growth curve
+  plot_solution(logistic_result)
+
+  # Check that it approaches carrying capacity
+  cat("Final population:", tail(logistic_result$Population, 1), "\n")
+  cat("Carrying capacity:", 1000, "\n")
+}
+```
+
+## Example: Two-Stock System
+
+A predator-prey model (simplified Lotka-Volterra):
+
+```{r predator_prey}
+# Define stocks
+Prey <- stock("Prey", initial = 100)
+Predator <- stock("Predator", initial = 10)
+
+# Define flows
+prey_growth <- flow("prey_growth",
+  rate = function(inputs, params) {
+    params$alpha * inputs$Prey
+  }
+)
+
+predation <- flow("predation",
+  rate = function(inputs, params) {
+    params$beta * inputs$Prey * inputs$Predator
+  }
+)
+
+predator_death <- flow("predator_death",
+  rate = function(inputs, params) {
+    params$delta * inputs$Predator
+  }
+)
+
+# Compose the system
+predator_prey <- Prey %+% Predator %+%
+  (NULL %->% prey_growth %->% Prey) %+%
+  (Prey %->% predation %->% Predator) %+%
+  (Predator %->% predator_death %->% NULL)
+
+pp_diagram <- finalize(predator_prey, reset_ids = TRUE)
+
+print(pp_diagram)
+```
+
+Equations:
+- $\frac{d(\text{Prey})}{dt} = \alpha \cdot \text{Prey} - \beta \cdot \text{Prey} \cdot \text{Predator}$
+- $\frac{d(\text{Predator})}{dt} = \beta \cdot \text{Prey} \cdot \text{Predator} - \delta \cdot \text{Predator}$
+
+```{r predator_prey_solve, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  pp_result <- solve_diagram(
+    pp_diagram,
+    times = seq(0, 100, by = 0.1),
+    params = c(alpha = 0.1, beta = 0.002, delta = 0.05)
+  )
+
+  # Plot both populations
+  plot_solution(pp_result)
+
+  # Phase plot shows cyclic dynamics
+  phase_plot(pp_result, "Prey", "Predator")
+}
+```
+
+## Algebraic API Syntax Guide
+
+The algebraic API uses operators to build models:
+
+### Stock Definition
+```{r eval = FALSE}
+X <- stock("X", initial = 100)
+```
+
+### Flow Definition
+```{r eval = FALSE}
+f <- flow("f", rate = function(inputs, params) { ... })
+```
+
+### Connection Operator: `%->%`
+Connects stocks and flows:
+```{r eval = FALSE}
+A %->% flow1 %->% B  # Flow from A to B
+NULL %->% flow2 %->% C  # External inflow to C
+D %->% flow3 %->% NULL  # Outflow from D
+```
+
+### Combination Operator: `%+%`
+Combines components:
+```{r eval = FALSE}
+model <- stock1 %+% stock2 %+%
+         (stock1 %->% flow1 %->% stock2)
+```
+
+### Finalization
+Convert specification to diagram:
+```{r eval = FALSE}
+diagram <- finalize(model, reset_ids = TRUE)
+```
+
+## Example: SIR Epidemic Model
+
+The classic SIR (Susceptible-Infected-Recovered) model:
+
+```{r sir}
+# Define stocks
+S <- stock("S", initial = 999)
+I <- stock("I", initial = 1)
+R <- stock("R", initial = 0)
+
+# Define flows
+infection <- flow("infection",
+  rate = function(inputs, params) {
+    params$beta * inputs$S * inputs$I / 1000
+  }
+)
+
+recovery <- flow("recovery",
+  rate = function(inputs, params) {
+    params$gamma * inputs$I
+  }
+)
+
+# Compose model
+sir <- S %+% I %+% R %+%
+  (S %->% infection %->% I) %+%
+  (I %->% recovery %->% R)
+
+sir_diagram <- finalize(sir, reset_ids = TRUE)
+print(sir_diagram)
+```
+
+This creates:
+- $\frac{dS}{dt} = -\beta \cdot S \cdot I / N$
+- $\frac{dI}{dt} = \beta \cdot S \cdot I / N - \gamma \cdot I$
+- $\frac{dR}{dt} = \gamma \cdot I$
+
+```{r sir_solve, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  sir_result <- solve_diagram(
+    sir_diagram,
+    times = seq(0, 100, by = 1),
+    params = c(beta = 0.5, gamma = 0.1)
+  )
+
+  # Plot all compartments
+  plot_solution(sir_result)
+
+  # Check conservation: S + I + R = 1000
+  total <- sir_result$S + sir_result$I + sir_result$R
+  cat("Population conserved:", all(abs(total - 1000) < 1e-6), "\n")
+}
+```
+
+## Key Concepts Summary
+
+### Stocks
+- Represent accumulations (population, water in tank, money in account)
+- Have initial values
+- Change over time according to flows
+- Created with `stock(name, initial = value)`
+
+### Flows
+- Represent rates of change
+- Connect stocks using the `%->%` operator
+- Defined by rate functions that depend on:
+  - Current stock values (`inputs$StockName`)
+  - Parameters (`params$ParamName`)
+- Created with `flow(name, rate = function(inputs, params) { ... })`
+
+### Parameters
+- Constants that control model behavior
+- Passed to `solve_diagram()`
+- Examples: birth rate, infection rate, decay constant
+
+### Rate Functions
+Flow rate functions have the signature:
+```r
+function(inputs, params) {
+  # inputs$X gives current value of stock X
+  # params$k gives parameter k
+  # return a single numeric value (the rate)
+}
+```
+
+### Model Building Pattern
+1. Define stocks with `stock()`
+2. Define flows with `flow()`
+3. Connect with `%->%` operator
+4. Combine with `%+%` operator
+5. Finalize with `finalize()`
+6. Solve with `solve_diagram()`
+
+## What's Next?
+
+- **Introduction (Algebraic)**: More examples including SEIR model with population conservation
+- **Composition (Algebraic)**: Learn to build complex models from simpler components
+- **Mathematical Foundations**: Category theory and functorial semantics
+
+## Common Patterns
+
+### Conservation
+
+When modeling conserved quantities, you can use sum variables:
+
+```{r conservation_example, eval = FALSE}
+# After creating model with stocks
+diagram <- finalize(model, reset_ids = TRUE)
+diagram <- diagram %>%
+  add_sum_variable("Total", stocks = c("Stock1", "Stock2", "Stock3"))
+```
+
+The total will remain constant.
+
+### Feedback Loops
+
+Stocks can influence their own flows:
+
+```{r feedback_example, eval = FALSE}
+P <- stock("Population", initial = 100)
+
+growth <- flow("growth",
+  rate = function(inputs, params) {
+    # Population influences its own growth rate
+    params$r * inputs$Population
+  }
+)
+
+model <- P %+% (NULL %->% growth %->% P)
+```
+
+### Coupled Systems
+
+Multiple stocks affecting each other:
+
+```{r coupled_example, eval = FALSE}
+A <- stock("A", initial = 100)
+B <- stock("B", initial = 50)
+
+A_to_B <- flow("A_to_B",
+  rate = function(inputs, params) {
+    params$k1 * inputs$A
+  }
+)
+
+B_to_A <- flow("B_to_A",
+  rate = function(inputs, params) {
+    params$k2 * inputs$B
+  }
+)
+
+model <- A %+% B %+%
+  (A %->% A_to_B %->% B) %+%
+  (B %->% B_to_A %->% A)
+```
+
+## Algebraic vs Pipe-Based API
+
+Both APIs create the same underlying models. Choose based on preference:
+
+**Algebraic API** (this guide):
+```{r eval = FALSE}
+S <- stock("S", 999)
+I <- stock("I", 1)
+f <- flow("infection", rate = ...)
+model <- S %+% I %+% (S %->% f %->% I)
+diagram <- finalize(model)
+```
+
+**Pipe-Based API** (see quickstart.Rmd):
+```{r eval = FALSE}
+diagram <- stock_flow_diagram() %>%
+  add_stock("S", initial = 999) %>%
+  add_stock("I", initial = 1) %>%
+  add_flow("infection", from = "S", to = "I", rate = ...)
+```
+
+## Tips
+
+1. **Start simple**: Build up complexity gradually
+2. **Use meaningful names**: Stock and flow names become equation variable names
+3. **Check units**: Make sure rates have correct dimensions
+4. **Validate**: Check that your model behaves as expected for extreme parameter values
+5. **Visualize first**: Use `plot(diagram)` to see structure before solving
+
+## Getting Help
+
+```{r eval = FALSE}
+?stock          # Help on stock creation
+?flow           # Help on flow creation
+?`%->%`         # Help on connection operator
+?finalize       # Help on finalizing models
+?solve_diagram  # Help on solving
+```
+
+## Session Info
+
+```{r session_info}
+sessionInfo()
+```

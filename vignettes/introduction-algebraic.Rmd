@@ -1,0 +1,585 @@
+---
+title: "Introduction to openstockflow (Algebraic API)"
+author: "Ian Moran"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to openstockflow (Algebraic API)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+## Overview
+
+**openstockflow** is the first R package to implement categorical stock-flow modeling using decorated cospans and functorial semantics. This approach, pioneered in the StockFlow.jl Julia package, enables compositional model building where complex systems are assembled from simpler components through categorical operations.
+
+This introduction demonstrates the **algebraic API**, which uses mathematical operators and categorical notation for model construction.
+
+### Key Features
+
+- **Compositional modeling**: Build complex models from simple components
+- **Functorial semantics**: Formal separation of diagram syntax from ODE semantics
+- **Algebraic notation**: Mathematical operators `%->%` and `%+%` for intuitive model building
+- **Integration**: Seamless integration with deSolve for ODE solving
+- **Visualization**: Multiple visualization options including ggraph and Graphviz
+
+## Installation
+
+```{r eval = FALSE}
+# Install from GitHub (when available)
+# devtools::install_github("ianmoran/openstockflow")
+
+# For now, load from source
+library(openstockflow)
+```
+
+```{r include = FALSE}
+# Load package files
+source("../R/classes.R")
+source("../R/primitives.R")
+source("../R/diagram.R")
+source("../R/algebraic-api.R")
+source("../R/semantics.R")
+source("../R/visualization.R")
+```
+
+## Basic Concepts
+
+### Stock-Flow Diagrams
+
+A **stock-flow diagram** consists of:
+
+- **Stocks** (rectangles): State variables representing accumulations
+- **Flows** (thick arrows): Rate processes that move quantities between stocks
+- **Links** (thin arrows): Information dependencies
+- **Variables**: Auxiliary computations and aggregations
+
+### Mathematical Foundation
+
+Stock-flow diagrams are functors $F: H \to \mathbf{FinSet}$ from a primitive category $H$ to finite sets, where:
+
+- Objects: $\{\text{stock}, \text{flow}, \text{link}\}$
+- Morphisms: $u, d: \text{flow} \to \text{stock}$ (upstream/downstream) and $s: \text{link} \to \text{stock}$, $t: \text{link} \to \text{flow}$
+
+The **ODE semantics** for a stock $\sigma$ is:
+
+$$\frac{d\sigma}{dt} = \sum_{f \in F(d)^{-1}(\sigma)} \phi_f - \sum_{f \in F(u)^{-1}(\sigma)} \phi_f$$
+
+That is: rate of change = inflows - outflows.
+
+## Example 1: SIR Epidemic Model
+
+The classic SIR (Susceptible-Infected-Recovered) model divides a population into three compartments.
+
+### Algebraic API
+
+```{r sir_algebraic}
+# Define stocks
+S <- stock("S", initial = 999)
+I <- stock("I", initial = 1)
+R <- stock("R", initial = 0)
+
+# Define flows
+infection <- flow("infection",
+  rate = function(inputs, params) {
+    params$beta * inputs$S * inputs$I / 1000
+  }
+)
+
+recovery <- flow("recovery",
+  rate = function(inputs, params) {
+    params$gamma * inputs$I
+  }
+)
+
+# Build diagram using %->% (connects) and %+% (combines)
+sir <- S %+% I %+% R %+%
+  (S %->% infection %->% I) %+%
+  (I %->% recovery %->% R)
+
+sir_diagram <- finalize(sir, reset_ids = TRUE)
+
+# View diagram structure
+print(sir_diagram)
+```
+
+The equations generated are:
+- $\frac{dS}{dt} = -\beta \cdot S \cdot I / 1000$
+- $\frac{dI}{dt} = \beta \cdot S \cdot I / 1000 - \gamma \cdot I$
+- $\frac{dR}{dt} = \gamma \cdot I$
+
+### Visualization
+
+```{r sir_viz, eval = FALSE}
+# Plot diagram structure
+plot(sir_diagram)
+
+# Export to Graphviz DOT format
+dot_str <- to_graphviz(sir_diagram)
+cat(dot_str)
+
+# With ggraph (if installed)
+library(ggraph)
+plot(sir_diagram, layout = "sugiyama")
+```
+
+### Simulation
+
+```{r sir_simulate, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  # Solve ODE system
+  result <- solve_diagram(
+    sir_diagram,
+    times = seq(0, 100, by = 1),
+    params = c(beta = 0.5, gamma = 0.1)
+  )
+
+  # View results
+  head(result)
+
+  # Plot solution
+  plot_solution(result)
+}
+```
+
+## Example 2: SEIR Model with Population Conservation
+
+The SEIR model adds an Exposed (E) compartment and uses a sum variable to track total population.
+
+```{r seir}
+# Define stocks
+S <- stock("S", initial = 1000)
+E <- stock("E", initial = 0)
+I <- stock("I", initial = 1)
+R <- stock("R", initial = 0)
+
+# Define flows
+infection <- flow("infection",
+  rate = function(inputs, params) {
+    params$beta * inputs$S * inputs$I / inputs$N
+  }
+)
+
+progression <- flow("progression",
+  rate = function(inputs, params) {
+    params$sigma * inputs$E
+  }
+)
+
+recovery <- flow("recovery",
+  rate = function(inputs, params) {
+    params$gamma * inputs$I
+  }
+)
+
+# Build diagram
+seir_spec <- S %+% E %+% I %+% R %+%
+  (S %->% infection %->% E) %+%
+  (E %->% progression %->% I) %+%
+  (I %->% recovery %->% R)
+
+seir <- finalize(seir_spec, reset_ids = TRUE)
+
+# Add sum variable for population conservation
+# Note: sum variables must be added after finalization
+library(magrittr)
+seir <- seir %>%
+  add_sum_variable("N", stocks = c("S", "E", "I", "R")) %>%
+  add_link(from = "N", to = "infection")
+
+print(seir)
+```
+
+The equations are:
+- $\frac{dS}{dt} = -\beta \cdot S \cdot I / N$
+- $\frac{dE}{dt} = \beta \cdot S \cdot I / N - \sigma \cdot E$
+- $\frac{dI}{dt} = \sigma \cdot E - \gamma \cdot I$
+- $\frac{dR}{dt} = \gamma \cdot I$
+
+Where $N = S + E + I + R$ remains constant.
+
+### SEIR Simulation
+
+```{r seir_simulate, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  seir_result <- solve_diagram(
+    seir,
+    times = seq(0, 200, by = 1),
+    params = c(beta = 0.5, sigma = 0.2, gamma = 0.1)
+  )
+
+  # Verify population conservation
+  total_pop <- seir_result$S + seir_result$E + seir_result$I + seir_result$R
+  cat("Population conservation:",
+      all(abs(total_pop - 1001) < 1e-6), "\n")
+
+  # Plot dynamics
+  plot_solution(seir_result)
+
+  # Phase plot
+  phase_plot(seir_result, "S", "I")
+}
+```
+
+## Example 3: Stock and Flow with Inflows/Outflows
+
+A water tank with constant inflow and proportional outflow.
+
+```{r tank}
+# Define stock
+Water <- stock("Water", initial = 50)
+
+# Define flows
+fill <- flow("fill",
+  rate = function(inputs, params) {
+    params$inflow_rate
+  }
+)
+
+drain <- flow("drain",
+  rate = function(inputs, params) {
+    params$outflow_rate * inputs$Water
+  }
+)
+
+# Build diagram: NULL represents external source/sink
+tank_spec <- Water %+%
+  (NULL %->% fill %->% Water) %+%
+  (Water %->% drain %->% NULL)
+
+tank <- finalize(tank_spec, reset_ids = TRUE)
+
+print(tank)
+```
+
+At equilibrium, inflow = outflow:
+$$\text{inflow\_rate} = \text{outflow\_rate} \times \text{Water}$$
+
+So: $\text{Water}_{\text{eq}} = \frac{\text{inflow\_rate}}{\text{outflow\_rate}}$
+
+```{r tank_simulate, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  tank_result <- solve_diagram(
+    tank,
+    times = seq(0, 50, by = 0.5),
+    params = c(inflow_rate = 10, outflow_rate = 0.1)
+  )
+
+  # Equilibrium should be 10 / 0.1 = 100
+  cat("Final water level:", tail(tank_result$Water, 1), "\n")
+  cat("Expected equilibrium:", 10 / 0.1, "\n")
+
+  plot_solution(tank_result)
+}
+```
+
+## Example 4: Auxiliary Variables
+
+Models can include auxiliary variables that depend on stocks or other variables.
+
+```{r auxiliary}
+# Define stock
+P <- stock("Population", initial = 100)
+
+# Define growth flow
+growth <- flow("growth",
+  rate = function(inputs, params) {
+    inputs$GrowthRate * inputs$Population
+  }
+)
+
+# Build base diagram
+growth_spec <- P %+% (NULL %->% growth %->% P)
+growth_model <- finalize(growth_spec, reset_ids = TRUE)
+
+# Add auxiliary variable and links after finalization
+library(magrittr)
+growth_model <- growth_model %>%
+  add_variable("GrowthRate",
+    expression = function(state, params, var_values) {
+      # Growth rate decreases as population approaches carrying capacity
+      params$r * (1 - state["Population"] / params$K)
+    }
+  ) %>%
+  add_link(from = "GrowthRate", to = "growth") %>%
+  add_link(from = "Population", to = "growth")
+
+print(growth_model)
+```
+
+This implements logistic growth where the growth rate decreases as population approaches carrying capacity $K$.
+
+## Algebraic API Reference
+
+### Stock Creation
+```{r eval = FALSE}
+X <- stock("X", initial = 100)
+```
+Creates a stock named "X" with initial value 100.
+
+### Flow Creation
+```{r eval = FALSE}
+f <- flow("f",
+  rate = function(inputs, params) {
+    # Compute rate based on inputs and params
+    params$k * inputs$X
+  }
+)
+```
+Creates a flow named "f" with a rate function.
+
+### Connection Operator: `%->%`
+```{r eval = FALSE}
+A %->% flow1 %->% B  # Flow from stock A to stock B
+NULL %->% flow2 %->% C  # External inflow to C
+D %->% flow3 %->% NULL  # Outflow from D to external sink
+```
+The `%->%` operator connects stocks and flows in sequence.
+
+### Combination Operator: `%+%`
+```{r eval = FALSE}
+model <- stock1 %+% stock2 %+%
+         (stock1 %->% flow1 %->% stock2) %+%
+         (stock2 %->% flow2 %->% stock1)
+```
+The `%+%` operator combines components into a single model specification.
+
+### Finalization
+```{r eval = FALSE}
+diagram <- finalize(model, reset_ids = TRUE)
+```
+Converts a model specification into a complete StockFlowDiagram.
+
+## Workflow Summary
+
+The typical workflow with the algebraic API is:
+
+1. **Define components**
+   ```{r eval = FALSE}
+   X <- stock("X", initial = 100)
+   f <- flow("f", rate = function(inputs, params) { ... })
+   ```
+
+2. **Connect and combine**
+   ```{r eval = FALSE}
+   model <- X %+% (X %->% f %->% NULL)
+   ```
+
+3. **Finalize**
+   ```{r eval = FALSE}
+   diagram <- finalize(model, reset_ids = TRUE)
+   ```
+
+4. **Add auxiliary features (optional)**
+   ```{r eval = FALSE}
+   diagram <- diagram %>%
+     add_variable(...) %>%
+     add_sum_variable(...) %>%
+     add_link(...)
+   ```
+
+5. **Solve with deSolve**
+   ```{r eval = FALSE}
+   result <- solve_diagram(diagram, times, params)
+   ```
+
+6. **Visualize and analyze**
+   ```{r eval = FALSE}
+   plot(diagram)              # Structure
+   plot_solution(result)      # Dynamics
+   phase_plot(result, "X", "Y")  # State space
+   ```
+
+## Design Principles
+
+### Compositional by Design
+
+Stock-flow diagrams are represented as functors, enabling:
+
+- **Local reasoning**: Understand components independently
+- **Categorical composition**: Combine models via decorated cospans
+- **Stratification**: Refine models via pullbacks (e.g., by age, sex)
+
+### Type Safety
+
+S4 classes with validation ensure:
+
+- Stocks have finite initial values
+- Flows connect to existing stocks
+- Dependencies are well-formed
+
+### Functorial Semantics
+
+Separation of concerns:
+
+- **Syntax**: Diagram structure (stocks, flows, links)
+- **Semantics**: ODE generation via `generate_ode()`
+- **Solving**: Numerical integration via deSolve
+
+## Advanced Example: Predator-Prey with Logistic Prey Growth
+
+Combining multiple patterns:
+
+```{r predator_prey_advanced}
+# Define stocks
+Prey <- stock("Prey", initial = 100)
+Predator <- stock("Predator", initial = 10)
+
+# Define flows
+prey_growth <- flow("prey_growth",
+  rate = function(inputs, params) {
+    # Logistic growth with carrying capacity
+    r <- params$r * (1 - inputs$Prey / params$K)
+    pmax(r * inputs$Prey, 0)  # Non-negative
+  }
+)
+
+predation <- flow("predation",
+  rate = function(inputs, params) {
+    params$alpha * inputs$Prey * inputs$Predator
+  }
+)
+
+predator_growth <- flow("predator_growth",
+  rate = function(inputs, params) {
+    # Predators gain energy from prey
+    params$alpha * params$efficiency * inputs$Prey * inputs$Predator
+  }
+)
+
+predator_death <- flow("predator_death",
+  rate = function(inputs, params) {
+    params$delta * inputs$Predator
+  }
+)
+
+# Build model
+pp_spec <- Prey %+% Predator %+%
+  (NULL %->% prey_growth %->% Prey) %+%
+  (Prey %->% predation %->% NULL) %+%
+  (NULL %->% predator_growth %->% Predator) %+%
+  (Predator %->% predator_death %->% NULL)
+
+pp_model <- finalize(pp_spec, reset_ids = TRUE)
+
+print(pp_model)
+```
+
+```{r predator_prey_solve, eval = requireNamespace("deSolve", quietly = TRUE)}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  pp_result <- solve_diagram(
+    pp_model,
+    times = seq(0, 200, by = 0.1),
+    params = c(
+      r = 0.5,           # Prey growth rate
+      K = 500,           # Prey carrying capacity
+      alpha = 0.01,      # Predation rate
+      efficiency = 0.5,  # Conversion efficiency
+      delta = 0.2        # Predator death rate
+    )
+  )
+
+  # Plot time series
+  plot_solution(pp_result)
+
+  # Phase portrait
+  phase_plot(pp_result, "Prey", "Predator")
+}
+```
+
+## Comparison with Pipe-Based API
+
+The algebraic API and pipe-based API create identical underlying models. Choose based on preference:
+
+**Algebraic API** (this guide):
+```{r eval = FALSE}
+# Define components
+S <- stock("S", 999)
+I <- stock("I", 1)
+f <- flow("infection", rate = ...)
+
+# Compose
+model <- S %+% I %+% (S %->% f %->% I)
+diagram <- finalize(model)
+```
+
+**Pipe-Based API** (see introduction.Rmd):
+```{r eval = FALSE}
+# Build incrementally
+diagram <- stock_flow_diagram() %>%
+  add_stock("S", initial = 999) %>%
+  add_stock("I", initial = 1) %>%
+  add_flow("infection", from = "S", to = "I", rate = ...)
+```
+
+Both produce the same `StockFlowDiagram` object.
+
+## Tips for Algebraic API
+
+1. **Define before connecting**: Create all stocks and flows before using `%->%`
+2. **Use parentheses**: Group connections with parentheses for clarity
+3. **NULL for external**: Use `NULL` for external sources/sinks
+4. **Finalize before adding auxiliary**: Variables and links must be added after finalization
+5. **Reset IDs for reproducibility**: Use `reset_ids = TRUE` in finalize
+
+## Common Patterns
+
+### Pattern 1: Stock with Self-Loop
+```{r eval = FALSE}
+X <- stock("X", initial = 100)
+growth <- flow("growth", rate = function(inputs, params) params$r * inputs$X)
+model <- X %+% (NULL %->% growth %->% X)
+```
+
+### Pattern 2: Two Stocks with Bidirectional Flow
+```{r eval = FALSE}
+A <- stock("A", initial = 100)
+B <- stock("B", initial = 50)
+f1 <- flow("A_to_B", rate = ...)
+f2 <- flow("B_to_A", rate = ...)
+model <- A %+% B %+% (A %->% f1 %->% B) %+% (B %->% f2 %->% A)
+```
+
+### Pattern 3: Chain of Stocks
+```{r eval = FALSE}
+S1 <- stock("S1", initial = 100)
+S2 <- stock("S2", initial = 0)
+S3 <- stock("S3", initial = 0)
+f1 <- flow("f1", rate = ...)
+f2 <- flow("f2", rate = ...)
+model <- S1 %+% S2 %+% S3 %+%
+         (S1 %->% f1 %->% S2) %+%
+         (S2 %->% f2 %->% S3)
+```
+
+## Next Steps
+
+- **Composition vignette**: Learn to build complex models from simpler components
+- **Mathematical foundations**: Deep dive into category theory and functorial semantics
+- **Quick start guide**: Fast introduction for beginners
+
+## Getting Help
+
+```{r eval = FALSE}
+?stock              # Stock creation
+?flow               # Flow creation
+?`%->%`             # Connection operator
+?`%+%`              # Combination operator
+?finalize           # Finalization
+?solve_diagram      # Solving ODEs
+```
+
+## Session Info
+
+```{r session_info}
+sessionInfo()
+```

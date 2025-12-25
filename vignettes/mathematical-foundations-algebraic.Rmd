@@ -1,0 +1,401 @@
+---
+title: "Mathematical Foundations (Algebraic API)"
+author: "Ian Moran"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Mathematical Foundations (Algebraic API)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Overview
+
+This vignette explains the mathematical foundations of the **openstockflow** package, based on category theory and functorial semantics. While you don't need to understand the mathematics to use the package, it provides insight into why the design works the way it does.
+
+**Note:** This version uses the **algebraic API** in code examples. The mathematical foundations are identical across both APIs.
+
+## The Primitive Category H
+
+Stock-flow diagrams are defined relative to a **primitive category** $H$ with:
+
+**Objects:**
+- $\text{stock}$ - state variables
+- $\text{flow}$ - rate processes
+- $\text{link}$ - information dependencies
+
+**Morphisms:**
+- $u: \text{flow} \to \text{stock}$ (upstream: where flow comes from)
+- $d: \text{flow} \to \text{stock}$ (downstream: where flow goes to)
+- $s: \text{link} \to \text{stock}$ (source of link)
+- $t: \text{link} \to \text{flow}$ (target of link)
+
+This primitive category encodes the structure that any stock-flow diagram must have.
+
+## Stock-Flow Diagrams as Functors
+
+A **stock-flow diagram** is a functor:
+
+$$F: H \to \mathbf{FinSet}$$
+
+from the primitive category to finite sets, enriched with additional data:
+
+1. **Objects:**
+   - $F(\text{stock}) = S$ (finite set of stocks)
+   - $F(\text{flow}) = F$ (finite set of flows)
+   - $F(\text{link}) = L$ (finite set of links)
+
+2. **Morphisms:**
+   - $F(u): F \to S$ (assigns each flow its source stock, or $\emptyset$ for inflows)
+   - $F(d): F \to S$ (assigns each flow its target stock, or $\emptyset$ for outflows)
+   - $F(s): L \to S \cup V$ (assigns each link its source)
+   - $F(t): L \to F$ (assigns each link its target flow)
+
+3. **Flow functions:** For each $f \in F$, a rate function:
+   $$\phi_f: \mathbb{R}^n \times \mathbb{R}^m \to \mathbb{R}$$
+   where $n$ is the number of stocks/variables the flow depends on (via links) and $m$ is the number of parameters.
+
+## Functorial Semantics
+
+The **functorial semantics** is a mapping:
+
+$$\text{Open}(\text{StockFlow}) \to \text{Open}(\text{Dynam})$$
+
+from open stock-flow diagrams to open dynamical systems (ODEs).
+
+### ODE Generation
+
+For a stock-flow diagram $F$ and a stock $\sigma \in S$:
+
+$$\frac{d\sigma}{dt} = \sum_{f \in F(d)^{-1}(\sigma)} \phi_f(\mathbf{x}, \mathbf{p}) - \sum_{f \in F(u)^{-1}(\sigma)} \phi_f(\mathbf{x}, \mathbf{p})$$
+
+In words: **rate of change = inflows - outflows**
+
+where:
+- $F(d)^{-1}(\sigma)$ is the set of flows with target stock $\sigma$ (inflows)
+- $F(u)^{-1}(\sigma)$ is the set of flows with source stock $\sigma$ (outflows)
+- $\mathbf{x}$ is the vector of current stock values
+- $\mathbf{p}$ is the vector of parameters
+
+## Variables and Dependencies
+
+### Auxiliary Variables
+
+An **auxiliary variable** is a function:
+
+$$v: \mathbb{R}^{|S|} \times \mathbb{R}^{|P|} \times \mathbb{R}^{|V|} \to \mathbb{R}$$
+
+that computes a derived quantity from:
+- Current stock values
+- Parameters
+- Other variables (respecting dependency order)
+
+### Sum Variables
+
+A **sum variable** aggregates stocks:
+
+$$v_{\text{sum}} = \sum_{i \in I} \sigma_i$$
+
+where $I \subseteq S$ is a subset of stocks.
+
+### Dependency Graph
+
+Variables may depend on:
+- Stocks (always computed)
+- Other variables (requires dependency analysis)
+
+The **dependency graph** $G = (V, E)$ has:
+- Vertices: variable names
+- Edges: $(v_1, v_2)$ if $v_2$ depends on $v_1$
+
+Variables must be evaluated in **topological order** to ensure dependencies are available.
+
+### Topological Sort (Kahn's Algorithm)
+
+```
+1. Compute in-degree for each variable (# of dependencies)
+2. Initialize queue with variables of in-degree 0
+3. While queue not empty:
+   a. Remove variable v from queue
+   b. Add v to sorted list
+   c. For each variable w that depends on v:
+      i. Decrease in-degree of w
+      ii. If in-degree of w = 0, add to queue
+4. If sorted list length < # variables, there's a cycle (error)
+```
+
+## Implementation in openstockflow
+
+### S4 Class Hierarchy
+
+The package uses S4 classes with formal validation:
+
+```
+DiagramElement (abstract)
+├── Stock
+├── Flow
+├── Link
+├── AuxiliaryVariable
+└── SumVariable
+
+StockFlowDiagram
+├── stocks: list of Stock objects
+├── flows: list of Flow objects
+├── links: list of Link objects
+├── variables: list of AuxiliaryVariable objects
+├── sumvars: list of SumVariable objects
+├── u_map, d_map, s_map, t_map: functor morphisms
+└── interface: stocks exposed for composition
+```
+
+### Functor Representation
+
+The `StockFlowDiagram` class stores:
+
+```r
+setClass("StockFlowDiagram",
+  slots = c(
+    # Objects
+    stocks = "list",      # F(stock)
+    flows = "list",       # F(flow)
+    links = "list",       # F(link)
+
+    # Morphisms
+    u_map = "integer",    # F(u): flow → stock
+    d_map = "integer",    # F(d): flow → stock
+    s_map = "integer",    # F(s): link → stock/variable
+    t_map = "integer",    # F(t): link → flow
+
+    # Additional structure
+    variables = "list",
+    sumvars = "list",
+    interface = "integer"
+  )
+)
+```
+
+This explicit functor representation ensures:
+- Categorical correctness
+- Efficient queries (which flows enter/exit a stock?)
+- Debuggability (can inspect morphisms directly)
+
+### ODE Generation Algorithm
+
+```
+function generate_ode(diagram):
+  # 1. Analyze variable dependencies
+  deps = build_dependency_graph(diagram)
+  var_order = topological_sort(deps)
+
+  # 2. Return ODE function
+  return function(time, state, params):
+    # 2a. Evaluate variables in topological order
+    for var in var_order:
+      if var is sum_variable:
+        var_values[var] = sum(state[stocks in var])
+      else:
+        var_values[var] = var.expression(state, params, var_values)
+
+    # 2b. Compute derivatives for each stock
+    for stock σ in diagram.stocks:
+      inflows = {f : F(d)(f) = σ}
+      outflows = {f : F(u)(f) = σ}
+
+      inflow_rate = sum(φ_f(inputs_f, params) for f in inflows)
+      outflow_rate = sum(φ_f(inputs_f, params) for f in outflows)
+
+      dσ/dt = inflow_rate - outflow_rate
+
+    return derivatives
+```
+
+where `inputs_f` is constructed from the links pointing to flow $f$:
+
+```
+inputs_f = {
+  stock/variable name: value
+  for each link l with t(l) = f
+}
+```
+
+## Categorical Composition (Future)
+
+### Decorated Cospans
+
+An **open stock-flow diagram** is a cospan:
+
+```
+   left_leg     right_leg
+I ---------> F <--------- O
+```
+
+where:
+- $I, O$ are interface sets (exposed stocks)
+- $F$ is the diagram (apex)
+- left_leg, right_leg are morphisms
+
+### Composition
+
+Two open diagrams can be **composed** when their interfaces match:
+
+```
+     l1       r1        l2       r2
+I -----> F1 <---- • ----> F2 <---- O
+```
+
+The composition is computed via **pushout**:
+
+```
+       l1∘π1        r2∘π2
+I -----------> F1 +_• F2 <---------- O
+```
+
+This enables:
+- Building complex models from components
+- Modular reasoning
+- Reusable model libraries
+
+### Stratification
+
+A diagram can be **stratified** by a typing function $\tau: S \to T$ that assigns types (e.g., age groups) to stocks.
+
+The stratified diagram is computed via **pullback**:
+
+```
+F'  ------>  F
+|            |
+v            v τ
+T^n  ------>  T
+```
+
+This enables:
+- Age-structured models
+- Spatial models
+- Multi-group epidemic models
+
+## Properties and Guarantees
+
+### Conservation Laws
+
+For a sum variable $v = \sum_{i \in I} \sigma_i$ where flows only transfer between stocks in $I$:
+
+$$\frac{dv}{dt} = \frac{d}{dt}\sum_{i \in I} \sigma_i = \sum_{i \in I} \frac{d\sigma_i}{dt} = 0$$
+
+The total is conserved.
+
+### Type Safety
+
+S4 validation ensures:
+- All stocks have finite initial values
+- All flows connect to existing stocks
+- All links have valid sources and targets
+- No dangling references
+
+### Correctness
+
+The functorial representation guarantees:
+- Inflows and outflows are correctly identified
+- Variable dependencies are properly tracked
+- Composition (when implemented) preserves semantics
+
+## Comparison to Other Approaches
+
+### Traditional Simulation Packages
+
+Most simulation packages (e.g., `deSolve`, `simecol`) work at the ODE level:
+
+```r
+# Traditional approach
+sir_ode <- function(t, state, params) {
+  with(as.list(c(state, params)), {
+    dS <- -beta * S * I / N
+    dI <- beta * S * I / N - gamma * I
+    dR <- gamma * I
+    list(c(dS, dI, dR))
+  })
+}
+```
+
+**openstockflow** provides a higher level of abstraction:
+- Visual diagram notation
+- Automatic ODE generation
+- Compositional structure
+- Type safety
+
+### System Dynamics Software
+
+Commercial tools (e.g., Stella, Vensim) provide GUIs for stock-flow diagrams but:
+- Lack compositional semantics
+- No formal categorical foundation
+- Not programmable/reproducible
+- Closed source
+
+**openstockflow** combines:
+- Rigorous mathematics
+- Open source R ecosystem
+- Programmatic construction
+- Version control friendly
+
+## References
+
+### Primary Papers
+
+1. **Baez, J. C., Li, X., Libkind, S., Osgood, N., & Redekopp, E. (2022).**
+   "Compositional Modeling with Stock and Flow Diagrams."
+   *arXiv:2205.08373v3*
+
+   Introduces decorated cospans for stock-flow composition.
+
+2. **Libkind, S., Baas, A., Halter, M., Patterson, E., & Fairbanks, J. (2022).**
+   "A Categorical Framework for Modeling with Stock and Flow Diagrams."
+   *arXiv:2211.01290v3*
+
+   Extends framework with stratification and undirected wiring diagrams.
+
+### Background on Category Theory
+
+3. **Spivak, D. I. (2014).**
+   *Category Theory for the Sciences.*
+   MIT Press.
+
+4. **Fong, B., & Spivak, D. I. (2019).**
+   *An Invitation to Applied Category Theory.*
+   Cambridge University Press.
+
+### Related Software
+
+5. **StockFlow.jl**
+   https://github.com/AlgebraicJulia/StockFlow.jl
+
+   Julia implementation (original inspiration for this package)
+
+6. **AlgebraicJulia**
+   https://www.algebraicjulia.org
+
+   Broader ecosystem for applied category theory in Julia
+
+## Further Reading
+
+- **Open dynamical systems**: Libkind et al. (2021), "An algebraic framework for structured epidemic modeling"
+- **Decorated cospans**: Fong (2015), "Decorated Cospans"
+- **Functorial semantics**: Baez & Master (2020), "Open Petri nets"
+
+## Glossary
+
+- **Category**: Collection of objects and morphisms with composition
+- **Functor**: Structure-preserving map between categories
+- **Cospan**: Diagram of the form $I \to F \leftarrow O$
+- **Pushout**: Categorical gluing operation
+- **Pullback**: Categorical limit operation
+- **Topological sort**: Linear ordering respecting dependencies
+
+---
+
+*For practical usage, see the Introduction and Quick Start vignettes.*

@@ -4,7 +4,11 @@ This directory contains comprehensive documentation for the **openstockflow** pa
 
 ## Available Vignettes
 
-### 1. Quick Start Guide (`quickstart.Rmd`)
+The package provides vignettes in two flavors: **pipe-based API** and **algebraic API**. Both APIs create identical models - choose based on your preference.
+
+### Pipe-Based API Vignettes
+
+#### 1. Quick Start Guide (`quickstart.Rmd`)
 
 **Target Audience**: New users who want to get started quickly
 
@@ -13,7 +17,7 @@ This directory contains comprehensive documentation for the **openstockflow** pa
 - Exponential decay model
 - Logistic growth model
 - Predator-prey dynamics
-- Both traditional and algebraic API examples
+- Brief introduction to algebraic API
 - Common patterns and tips
 
 **Access**:
@@ -21,13 +25,13 @@ This directory contains comprehensive documentation for the **openstockflow** pa
 vignette("quickstart", "openstockflow")
 ```
 
-### 2. Introduction (`introduction.Rmd`)
+#### 2. Introduction (`introduction.Rmd`)
 
 **Target Audience**: Users who want comprehensive understanding
 
 **Contents**:
 - Overview of categorical stock-flow modeling
-- SIR epidemic model (both APIs)
+- SIR epidemic model (both APIs shown)
 - SEIR model with sum variables
 - Tank model with inflows/outflows
 - Auxiliary variables example
@@ -40,7 +44,7 @@ vignette("quickstart", "openstockflow")
 vignette("introduction", "openstockflow")
 ```
 
-### 3. Mathematical Foundations (`mathematical-foundations.Rmd`)
+#### 3. Mathematical Foundations (`mathematical-foundations.Rmd`)
 
 **Target Audience**: Users interested in the theoretical foundations
 
@@ -60,6 +64,65 @@ vignette("introduction", "openstockflow")
 **Access**:
 ```r
 vignette("mathematical-foundations", "openstockflow")
+```
+
+#### 4. Compositional Modeling (`composition.Rmd`)
+
+**Target Audience**: Users building complex models from components
+
+**Contents**:
+- Introduction to composition via decorated cospans
+- Converting diagrams to open form
+- Simple composition examples (connected tanks)
+- SIR model decomposition and recomposition
+- Flow rate merging
+- Associativity of composition
+- Design patterns for reusable components
+- Stratified and modular models
+
+**Access**:
+```r
+vignette("composition", "openstockflow")
+```
+
+### Algebraic API Vignettes
+
+The following vignettes demonstrate the same content using the algebraic API (`stock()`, `flow()`, `%->%`, `%+%`, `finalize()`):
+
+#### 5. Quick Start Guide - Algebraic (`quickstart-algebraic.Rmd`)
+
+Same content as quickstart.Rmd, but exclusively using algebraic API syntax.
+
+**Access**:
+```r
+vignette("quickstart-algebraic", "openstockflow")
+```
+
+#### 6. Introduction - Algebraic (`introduction-algebraic.Rmd`)
+
+Same content as introduction.Rmd, but exclusively using algebraic API syntax.
+
+**Access**:
+```r
+vignette("introduction-algebraic", "openstockflow")
+```
+
+#### 7. Mathematical Foundations - Algebraic (`mathematical-foundations-algebraic.Rmd`)
+
+Same theoretical content as mathematical-foundations.Rmd with algebraic API examples.
+
+**Access**:
+```r
+vignette("mathematical-foundations-algebraic", "openstockflow")
+```
+
+#### 8. Compositional Modeling - Algebraic (`composition-algebraic.Rmd`)
+
+Same content as composition.Rmd, but exclusively using algebraic API syntax.
+
+**Access**:
+```r
+vignette("composition-algebraic", "openstockflow")
 ```
 
 ## Building the Vignettes
@@ -152,11 +215,11 @@ When adding new vignettes:
 
 Planned for future phases:
 
-- **Composition**: Building complex models via decorated cospans
-- **Stratification**: Age-structured and multi-group models
+- **Stratification**: Age-structured and multi-group models via pullbacks
 - **tidygraph Integration**: Working with tbl_graph objects
 - **Performance Optimization**: Compiled ODEs and large-scale models
 - **Case Studies**: Real-world applications (COVID-19, climate, economics)
+- **Advanced Composition**: Multi-way composition and composition patterns
 
 ## References
 

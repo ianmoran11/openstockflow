@@ -1,0 +1,445 @@
+---
+title: "Compositional Modeling with Decorated Cospans (Algebraic API)"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Compositional Modeling with Decorated Cospans (Algebraic API)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(openstockflow)
+```
+
+## Introduction
+
+One of the key advantages of the categorical approach to stock-flow modeling is the ability to **compose** complex models from simpler components. This vignette demonstrates how to build models compositionally using decorated cospans and pushout operations with the **algebraic API**.
+
+### What is Composition?
+
+Composition allows you to:
+
+- Build complex systems from simpler, reusable components
+- Connect models through shared interface stocks
+- Maintain mathematical rigor through categorical operations
+- Ensure that composed models have well-defined semantics
+
+### Mathematical Foundation
+
+Composition is based on the categorical pushout operation. When you compose two diagrams through a shared interface, the system:
+
+1. Takes the disjoint union of both diagrams
+2. Identifies (glues together) the stocks in the interface
+3. Preserves all flows from both diagrams
+4. Maintains the categorical structure
+
+## Converting to Open Diagrams
+
+Before composition, diagrams must be converted to "open" form by specifying which stocks are exposed as interfaces.
+
+```{r open_diagrams}
+# Create a simple diagram
+Water <- stock("Water", initial = 100)
+Spillage <- stock("Spillage", initial = 0)
+
+leak <- flow("leak",
+  rate = function(inputs, params) params$leak_rate * inputs$Water
+)
+
+tank_spec <- Water %+% Spillage %+% (Water %->% leak %->% Spillage)
+tank <- finalize(tank_spec, reset_ids = TRUE)
+
+# Expose "Water" as a right interface (can be composed on the right)
+open_tank <- as_open_diagram(tank, right_interface = "Water")
+
+# You can also specify both left and right interfaces
+open_tank_both <- as_open_diagram(tank,
+  left_interface = "Water",
+  right_interface = "Spillage"
+)
+```
+
+## Simple Composition: Connected Tanks
+
+Let's compose two tank models to create a connected system.
+
+```{r connected_tanks}
+# Left tank: water flows in and can flow to the right
+Tank1_left <- stock("Tank1", initial = 100)
+inflow <- flow("inflow",
+  rate = function(inputs, params) params$inflow_rate
+)
+
+left_tank_spec <- Tank1_left %+% (NULL %->% inflow %->% Tank1_left)
+left_tank <- finalize(left_tank_spec, reset_ids = TRUE)
+
+# Right tank: receives water from the left
+Tank2_right <- stock("Tank2", initial = 50)
+outflow <- flow("outflow",
+  rate = function(inputs, params) params$outflow_rate * inputs$Tank2
+)
+
+right_tank_spec <- Tank2_right %+% (Tank2_right %->% outflow %->% NULL)
+right_tank <- finalize(right_tank_spec, reset_ids = TRUE)
+
+# Create a connecting flow
+Tank1_conn <- stock("Tank1", initial = 100)
+Tank2_conn <- stock("Tank2", initial = 50)
+transfer <- flow("transfer",
+  rate = function(inputs, params) params$transfer_rate * inputs$Tank1
+)
+
+connector_spec <- Tank1_conn %+% Tank2_conn %+%
+  (Tank1_conn %->% transfer %->% Tank2_conn)
+connector <- finalize(connector_spec, reset_ids = TRUE)
+
+# Compose: left_tank with connector via Tank1
+left_open <- as_open_diagram(left_tank, right_interface = "Tank1")
+connector_open1 <- as_open_diagram(connector,
+  left_interface = "Tank1",
+  right_interface = "Tank2"
+)
+
+step1 <- compose(left_open, connector_open1)
+
+# Compose: result with right_tank via Tank2
+connector_open2 <- as_open_diagram(right_tank, left_interface = "Tank2")
+final_system <- compose(step1, connector_open2)
+
+# Close to get the complete diagram
+complete_system <- close_diagram(final_system)
+
+# The complete system has all three stocks and all three flows
+cat("Stocks:", n_stocks(complete_system), "\n")
+cat("Flows:", n_flows(complete_system), "\n")
+```
+
+## SIR Model Composition
+
+A powerful use case is building epidemic models by composing transmission and recovery processes.
+
+```{r sir_composition}
+# Transmission process: S -> I
+S_trans <- stock("S", initial = 999)
+I_trans <- stock("I", initial = 1)
+
+infection <- flow("infection",
+  rate = function(inputs, params) {
+    params$beta * inputs$S * inputs$I / (inputs$S + inputs$I)
+  }
+)
+
+transmission_spec <- S_trans %+% I_trans %+%
+  (S_trans %->% infection %->% I_trans)
+transmission <- finalize(transmission_spec, reset_ids = TRUE)
+
+# Recovery process: I -> R
+I_rec <- stock("I", initial = 1)
+R_rec <- stock("R", initial = 0)
+
+recovery_flow <- flow("recovery",
+  rate = function(inputs, params) params$gamma * inputs$I
+)
+
+recovery_spec <- I_rec %+% R_rec %+%
+  (I_rec %->% recovery_flow %->% R_rec)
+recovery <- finalize(recovery_spec, reset_ids = TRUE)
+
+# Compose via shared stock "I"
+sir <- compose(
+  transmission,
+  recovery,
+  interface = "I"
+)
+
+# Close and solve
+sir_closed <- close_diagram(sir)
+
+# The composed model has the correct structure
+cat("SIR model stocks:", stock_names(sir_closed), "\n")
+cat("SIR model flows:", flow_names(sir_closed), "\n")
+
+# Solve the composed model
+result <- solve_diagram(
+  sir_closed,
+  times = seq(0, 100, by = 1),
+  params = c(beta = 0.5, gamma = 0.1)
+)
+
+# Plot the result
+plot_solution(result, title = "Composed SIR Model")
+```
+
+The equations generated are:
+- $\frac{dS}{dt} = -\beta \cdot S \cdot I / (S + I)$
+- $\frac{dI}{dt} = \beta \cdot S \cdot I / (S + I) - \gamma \cdot I$
+- $\frac{dR}{dt} = \gamma \cdot I$
+
+## Flow Rate Merging
+
+When multiple flows connect to the same interface stock, their rates are automatically summed.
+
+```{r flow_merging}
+# Two sources flowing into a shared reservoir
+Source1 <- stock("Source1", initial = 100)
+Reservoir1 <- stock("Reservoir", initial = 0)
+
+flow1 <- flow("flow1",
+  rate = function(inputs, params) params$rate1
+)
+
+source1_spec <- Source1 %+% Reservoir1 %+%
+  (Source1 %->% flow1 %->% Reservoir1)
+source1_diagram <- finalize(source1_spec, reset_ids = TRUE)
+
+# Second source
+Source2 <- stock("Source2", initial = 100)
+Reservoir2 <- stock("Reservoir", initial = 0)
+
+flow2 <- flow("flow2",
+  rate = function(inputs, params) params$rate2
+)
+
+source2_spec <- Source2 %+% Reservoir2 %+%
+  (Source2 %->% flow2 %->% Reservoir2)
+source2_diagram <- finalize(source2_spec, reset_ids = TRUE)
+
+# Compose via shared "Reservoir"
+combined <- compose(source1_diagram, source2_diagram, interface = "Reservoir")
+combined_closed <- close_diagram(combined)
+
+# The reservoir receives both flows
+# dReservoir/dt = rate1 + rate2
+ode_func <- generate_ode(combined_closed)
+state <- initial_state(combined_closed)
+params <- c(rate1 = 5, rate2 = 3)
+
+# At t=0, dReservoir/dt = 5 + 3 = 8
+deriv <- ode_func(0, state, params)
+reservoir_idx <- which(stock_names(combined_closed) == "Reservoir")
+cat("dReservoir/dt =", deriv[[1]][reservoir_idx], "(expected: 8)\n")
+```
+
+## Associativity: Chaining Compositions
+
+Composition is associative, meaning you can compose multiple diagrams in any order.
+
+```{r associativity}
+# Create three simple diagrams
+X_stock <- stock("X", initial = 10)
+Y_a <- stock("Y", initial = 0)
+a_spec <- X_stock %+% Y_a
+a <- finalize(a_spec, reset_ids = TRUE)
+
+Y_b <- stock("Y", initial = 0)
+Z_b <- stock("Z", initial = 0)
+b_spec <- Y_b %+% Z_b
+b <- finalize(b_spec, reset_ids = TRUE)
+
+Z_c <- stock("Z", initial = 0)
+W_c <- stock("W", initial = 0)
+c_spec <- Z_c %+% W_c
+c <- finalize(c_spec, reset_ids = TRUE)
+
+# Compose left-to-right: (A ∘ B) ∘ C
+ab <- compose(a, b, interface = "Y")
+abc_left <- compose(ab, c, interface = "Z")
+
+# Compose right-to-left: A ∘ (B ∘ C)
+bc <- compose(b, c, interface = "Z")
+abc_right <- compose(a, bc, interface = "Y")
+
+# Both result in the same structure (up to ID renaming)
+cat("Left association stocks:", n_stocks(close_diagram(abc_left)), "\n")
+cat("Right association stocks:", n_stocks(close_diagram(abc_right)), "\n")
+```
+
+## Design Patterns for Reusable Components
+
+### Pattern 1: Stratified Models
+
+Create age-stratified models by composing identical structures for each age group.
+
+```{r stratification, eval=FALSE}
+# Function to create a single age group
+create_age_group <- function(age_name, initial_S, initial_I) {
+  S <- stock(paste0("S_", age_name), initial = initial_S)
+  I <- stock(paste0("I_", age_name), initial = initial_I)
+  R <- stock(paste0("R_", age_name), initial = 0)
+
+  infection <- flow(paste0("infection_", age_name),
+    rate = function(inputs, params) {
+      # Age-specific transmission rate
+      s_val <- inputs[[paste0("S_", age_name)]]
+      i_val <- inputs[[paste0("I_", age_name)]]
+      params[[paste0("beta_", age_name)]] * s_val * i_val
+    }
+  )
+
+  spec <- S %+% I %+% R %+%
+    (S %->% infection %->% I)
+
+  finalize(spec, reset_ids = TRUE)
+}
+
+# Create age groups
+children <- create_age_group("child", 1000, 10)
+adults <- create_age_group("adult", 2000, 5)
+
+# These can be composed or analyzed separately
+```
+
+### Pattern 2: Modular Interventions
+
+Build intervention components that can be added to base models.
+
+```{r interventions, eval=FALSE}
+# Base SIR model
+S_base <- stock("S", initial = 999)
+I_base <- stock("I", initial = 1)
+R_base <- stock("R", initial = 0)
+
+infection_base <- flow("infection",
+  rate = function(inputs, params) {
+    total <- inputs$S + inputs$I + inputs$R
+    params$beta * inputs$S * inputs$I / total
+  }
+)
+
+recovery_base <- flow("recovery",
+  rate = function(inputs, params) params$gamma * inputs$I
+)
+
+base_sir_spec <- S_base %+% I_base %+% R_base %+%
+  (S_base %->% infection_base %->% I_base) %+%
+  (I_base %->% recovery_base %->% R_base)
+
+base_sir <- finalize(base_sir_spec, reset_ids = TRUE)
+
+# Vaccination intervention (moves S -> R directly)
+S_vax <- stock("S", initial = 999)
+R_vax <- stock("R", initial = 0)
+
+vaccination <- flow("vaccination",
+  rate = function(inputs, params) {
+    params$vax_rate * inputs$S
+  }
+)
+
+vaccination_spec <- S_vax %+% R_vax %+%
+  (S_vax %->% vaccination %->% R_vax)
+
+vaccination_model <- finalize(vaccination_spec, reset_ids = TRUE)
+
+# Compose to add vaccination to the model
+sir_with_vax <- compose(
+  base_sir,
+  vaccination_model,
+  interface = c("S", "R")
+)
+```
+
+## Advanced Example: Modular SIR with Vaccination
+
+Complete example showing modular composition:
+
+```{r modular_sir, eval=FALSE}
+# Component 1: Transmission (S -> I)
+S1 <- stock("S", initial = 999)
+I1 <- stock("I", initial = 1)
+
+transmission_flow <- flow("transmission",
+  rate = function(inputs, params) {
+    params$beta * inputs$S * inputs$I / 1000
+  }
+)
+
+transmission_comp <- finalize(
+  S1 %+% I1 %+% (S1 %->% transmission_flow %->% I1),
+  reset_ids = TRUE
+)
+
+# Component 2: Recovery (I -> R)
+I2 <- stock("I", initial = 1)
+R2 <- stock("R", initial = 0)
+
+recovery_comp_flow <- flow("recovery",
+  rate = function(inputs, params) params$gamma * inputs$I
+)
+
+recovery_comp <- finalize(
+  I2 %+% R2 %+% (I2 %->% recovery_comp_flow %->% R2),
+  reset_ids = TRUE
+)
+
+# Component 3: Vaccination (S -> R)
+S3 <- stock("S", initial = 999)
+R3 <- stock("R", initial = 0)
+
+vax_flow <- flow("vaccination",
+  rate = function(inputs, params) params$vax_rate * inputs$S
+)
+
+vax_comp <- finalize(
+  S3 %+% R3 %+% (S3 %->% vax_flow %->% R3),
+  reset_ids = TRUE
+)
+
+# Compose step 1: Transmission + Recovery via I
+sir_base <- compose(transmission_comp, recovery_comp, interface = "I")
+
+# Compose step 2: Add vaccination via S and R
+sir_full <- compose(sir_base, vax_comp, interface = c("S", "R"))
+
+# Close and simulate
+sir_final <- close_diagram(sir_full)
+
+result <- solve_diagram(
+  sir_final,
+  times = seq(0, 100, by = 1),
+  params = c(beta = 0.5, gamma = 0.1, vax_rate = 0.01)
+)
+
+plot_solution(result)
+```
+
+## Summary
+
+Compositional modeling with openstockflow's algebraic API enables:
+
+- **Modularity**: Build complex models from simple, reusable components
+- **Mathematical rigor**: Composition follows categorical laws (associativity, identity)
+- **Flow merging**: Automatically handles multiple flows to interface stocks
+- **Flexibility**: Compose in any order, create libraries of reusable components
+
+Key functions:
+
+- `as_open_diagram()`: Convert a diagram to open form with interfaces
+- `compose()`: Compose two diagrams via a shared interface
+- `close_diagram()`: Extract the underlying diagram from an open diagram
+
+Algebraic API workflow:
+
+1. Define components with `stock()` and `flow()`
+2. Connect with `%->%` and combine with `%+%`
+3. Finalize with `finalize()`
+4. Convert to open diagrams with `as_open_diagram()`
+5. Compose with `compose()`
+6. Close and solve with `close_diagram()` and `solve_diagram()`
+
+## References
+
+- Baez, J. C., Li, X., Libkind, S., Osgood, N., & Redekopp, E. (2022).
+  *Compositional modeling with stock and flow diagrams.*
+  arXiv:2205.08373
+
+- Libkind, S., Baas, A., Halter, M., Patterson, E., & Fairbanks, J. (2022).
+  *An algebraic framework for structured epidemic modeling.*
+  arXiv:2211.01290
