@@ -35,6 +35,7 @@ VignetteBuilder: knitr
 URL: https://github.com/ianmoran/openstockflow
 BugReports: https://github.com/ianmoran/openstockflow/issues
 Collate:
+    'openstockflow-package.R'
     'classes.R'
     'primitives.R'
     'diagram.R'
