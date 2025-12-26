@@ -102,8 +102,8 @@ recovery <- flow("recovery",
 )
 
 # Build diagram using %->% (connects) and %+% (combines)
-sir <- S %+% I %+% R %+%
-  (S %->% infection %->% I) %+%
+# Note: As of v0.2.0, stocks used in connections are automatically included!
+sir <- (S %->% infection %->% I) %+%
   (I %->% recovery %->% R)
 
 sir_diagram <- finalize(sir, reset_ids = TRUE)
@@ -181,9 +181,8 @@ recovery <- flow("recovery",
   }
 )
 
-# Build diagram
-seir_spec <- S %+% E %+% I %+% R %+%
-  (S %->% infection %->% E) %+%
+# Build diagram (stocks automatically included from connections)
+seir_spec <- (S %->% infection %->% E) %+%
   (E %->% progression %->% I) %+%
   (I %->% recovery %->% R)
 
@@ -252,8 +251,8 @@ drain <- flow("drain",
 )
 
 # Build diagram: NULL represents external source/sink
-tank_spec <- Water %+%
-  (NULL %->% fill %->% Water) %+%
+# Water automatically included from connections
+tank_spec <- (NULL %->% fill %->% Water) %+%
   (Water %->% drain %->% NULL)
 
 tank <- finalize(tank_spec, reset_ids = TRUE)
@@ -297,8 +296,8 @@ growth <- flow("growth",
   }
 )
 
-# Build base diagram
-growth_spec <- P %+% (NULL %->% growth %->% P)
+# Build base diagram (P automatically included)
+growth_spec <- NULL %->% growth %->% P
 growth_model <- finalize(growth_spec, reset_ids = TRUE)
 
 # Add auxiliary variable and links after finalization
@@ -347,11 +346,12 @@ The `%->%` operator connects stocks and flows in sequence.
 
 ### Combination Operator: `%+%`
 ```{r eval = FALSE}
-model <- stock1 %+% stock2 %+%
-         (stock1 %->% flow1 %->% stock2) %+%
+# Stocks automatically included from connections (v0.2.0+)
+model <- (stock1 %->% flow1 %->% stock2) %+%
          (stock2 %->% flow2 %->% stock1)
 ```
 The `%+%` operator combines components into a single model specification.
+As of v0.2.0, stocks used in connections are automatically included.
 
 ### Finalization
 ```{r eval = FALSE}
