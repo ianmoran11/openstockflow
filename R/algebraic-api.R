@@ -43,8 +43,8 @@ stock <- function(name, initial = 0) {
 #'
 #' @param name Character name for the flow
 #' @param rate Function computing flow rate with signature function(inputs, params)
-#' @param from Character name of source stock (set later with %->% operator)
-#' @param to Character name of target stock (set later with %->% operator)
+#' @param from Character name of source stock (set later with operator)
+#' @param to Character name of target stock (set later with operator)
 #' @return A list with class "flow_spec"
 #'
 #' @examples
@@ -339,9 +339,9 @@ build_diagram <- function(..., reset_ids = TRUE) {
 
 # Combination Operator ======================================================
 
-#' Combine stocks and flows using %+% operator
+#' Combine stocks and flows using the combination operator
 #'
-#' The %+% operator combines specifications and builds a diagram incrementally.
+#' The combination operator combines specifications and builds a diagram incrementally.
 #' It can combine:
 #' - stock_spec + stock_spec
 #' - stock_spec + flow_connection
@@ -367,10 +367,10 @@ build_diagram <- function(..., reset_ids = TRUE) {
 #'   rate = function(inputs, params) params$gamma * inputs$I
 #' )
 #'
-#' # Combine with %+%
-#' sir <- S %+% I %+% R %+%
-#'        (S %->% infection %->% I) %+%
-#'        (I %->% recovery %->% R)
+#' # Combine components
+#' sir <- S + I + R +
+#'        (S -> infection -> I) +
+#'        (I -> recovery -> R)
 #' }
 #'
 #' @export

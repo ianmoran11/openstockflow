@@ -2,7 +2,7 @@
 % Please edit documentation in R/algebraic-api.R
 \name{\%+\%}
 \alias{\%+\%}
-\title{Combine stocks and flows using %+% operator}
+\title{Combine stocks and flows using the combination operator}
 \usage{
 lhs \%+\% rhs
 }
@@ -15,7 +15,7 @@ lhs \%+\% rhs
 A diagram_spec (collection of specs) or StockFlowDiagram
 }
 \description{
-The %+% operator combines specifications and builds a diagram incrementally.
+The combination operator combines specifications and builds a diagram incrementally.
 It can combine:
 - stock_spec + stock_spec
 - stock_spec + flow_connection
@@ -37,10 +37,10 @@ recovery <- flow("recovery",
   rate = function(inputs, params) params$gamma * inputs$I
 )
 
-# Combine with \%+\%
-sir <- S \%+\% I \%+\% R \%+\%
-       (S \%->\% infection \%->\% I) \%+\%
-       (I \%->\% recovery \%->\% R)
+# Combine components
+sir <- S + I + R +
+       (S -> infection -> I) +
+       (I -> recovery -> R)
 }
 
 }

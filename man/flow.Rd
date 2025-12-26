@@ -11,9 +11,9 @@ flow(name, rate, from = NULL, to = NULL)
 
 \item{rate}{Function computing flow rate with signature function(inputs, params)}
 
-\item{from}{Character name of source stock (set later with %->% operator)}
+\item{from}{Character name of source stock (set later with operator)}
 
-\item{to}{Character name of target stock (set later with %->% operator)}
+\item{to}{Character name of target stock (set later with operator)}
 }
 \value{
 A list with class "flow_spec"
