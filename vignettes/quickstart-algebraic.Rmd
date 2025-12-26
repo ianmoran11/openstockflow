@@ -56,7 +56,9 @@ decay <- flow("decay",
 )
 
 # Compose: X flows out via decay
-decay_model <- X %+% (X %->% decay %->% NULL)
+# Note: As of v0.2.0, stocks used in connections are automatically included!
+# The old syntax: X %+% (X %->% decay %->% NULL) still works
+decay_model <- X %->% decay %->% NULL
 decay_diagram <- finalize(decay_model, reset_ids = TRUE)
 
 # View the structure
@@ -214,11 +216,17 @@ NULL %->% flow2 %->% C  # External inflow to C
 D %->% flow3 %->% NULL  # Outflow from D
 ```
 
+**New in v0.2.0**: Stocks used in connections are automatically included!
+
 ### Combination Operator: `%+%`
 Combines components:
 ```{r eval = FALSE}
+# Old style (explicit stocks)
 model <- stock1 %+% stock2 %+%
          (stock1 %->% flow1 %->% stock2)
+
+# New style (automatic stock inclusion) - preferred!
+model <- (stock1 %->% flow1 %->% stock2)
 ```
 
 ### Finalization

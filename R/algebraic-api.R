@@ -135,9 +135,14 @@ sumvar <- function(name, stocks) {
 #' The %->% operator creates a flow connection between two stocks.
 #' It can be chained: stock1 %->% flow1 %->% stock2
 #'
-#' @param lhs Left-hand side: stock_spec or flow_spec
-#' @param rhs Right-hand side: flow_spec or stock_spec
-#' @return A partial flow connection (class "flow_connection")
+#' As of version 0.2.0, stocks referenced in flow connections are automatically
+#' included in the diagram when finalize() is called, eliminating the need to
+#' explicitly add them with %+%. This makes the API more concise while remaining
+#' fully backward compatible.
+#'
+#' @param lhs Left-hand side: stock_spec or flow_spec (or NULL for external inflow)
+#' @param rhs Right-hand side: flow_spec or stock_spec (or NULL for external outflow)
+#' @return A partial or complete flow connection
 #'
 #' @examples
 #' \dontrun{
@@ -152,6 +157,13 @@ sumvar <- function(name, stocks) {
 #'
 #' # Connect: S %->% infection %->% I
 #' connection <- S %->% infection %->% I
+#'
+#' # Stocks are automatically included when finalized
+#' diagram <- finalize(connection)  # S and I automatically added!
+#'
+#' # External flows use NULL
+#' inflow <- NULL %->% some_flow %->% Stock
+#' outflow <- Stock %->% some_flow %->% NULL
 #' }
 #'
 #' @export
@@ -160,6 +172,7 @@ sumvar <- function(name, stocks) {
   if (inherits(lhs, "stock_spec") && inherits(rhs, "flow_spec")) {
     # Create a partial connection (flow with source set)
     rhs$from <- lhs$name
+    rhs$from_spec <- lhs  # Store the stock object for automatic inclusion
     structure(
       rhs,
       class = c("flow_connection", "flow_spec")
@@ -170,6 +183,7 @@ sumvar <- function(name, stocks) {
            inherits(rhs, "stock_spec")) {
     # Complete the connection
     lhs$to <- rhs$name
+    lhs$to_spec <- rhs  # Store the stock object for automatic inclusion
     structure(
       lhs,
       class = c("flow_connection_complete", "flow_connection", "flow_spec")
@@ -178,6 +192,7 @@ sumvar <- function(name, stocks) {
   # Case 3: NULL %->% stock (inflow)
   else if (is.null(lhs) && inherits(rhs, "flow_spec")) {
     rhs$from <- NULL
+    rhs$from_spec <- NULL  # No source stock (external inflow)
     structure(
       rhs,
       class = c("flow_connection", "flow_spec")
@@ -186,6 +201,7 @@ sumvar <- function(name, stocks) {
   # Case 4: flow %->% NULL (outflow)
   else if (inherits(lhs, c("flow_connection", "flow_spec")) && is.null(rhs)) {
     lhs$to <- NULL
+    lhs$to_spec <- NULL  # No target stock (external outflow)
     structure(
       lhs,
       class = c("flow_connection_complete", "flow_connection", "flow_spec")
@@ -201,11 +217,20 @@ sumvar <- function(name, stocks) {
 #' Build a diagram from specifications
 #'
 #' Takes a list of stock, flow, and variable specifications and
-#' constructs a StockFlowDiagram.
+#' constructs a StockFlowDiagram. As of version 0.2.0, stocks referenced
+#' in flow connections are automatically included, so explicit stock
+#' specifications are optional if they appear in connections.
 #'
 #' @param ... Stock specs, flow connections, and variable specs
 #' @param reset_ids Logical; if TRUE, reset ID counter (default TRUE)
 #' @return StockFlowDiagram object
+#'
+#' @details
+#' Stocks can be specified explicitly or implicitly:
+#' - Explicit: Pass stock specs directly as arguments
+#' - Implicit: Stocks referenced in flow connections are automatically added
+#' - Isolated stocks (no flows) must be specified explicitly
+#' - Explicit specifications take precedence over implicit
 #'
 #' @examples
 #' \dontrun{
@@ -222,22 +247,60 @@ sumvar <- function(name, stocks) {
 #'   rate = function(inputs, params) params$gamma * inputs$I
 #' )
 #'
-#' # Build diagram
-#' sir <- build_diagram(
+#' # Old style (explicit stocks - still works)
+#' sir1 <- build_diagram(
 #'   S, I, R,
 #'   S %->% infection %->% I,
 #'   I %->% recovery %->% R
 #' )
+#'
+#' # New style (automatic stock inclusion)
+#' sir2 <- build_diagram(
+#'   S %->% infection %->% I,
+#'   I %->% recovery %->% R
+#' )  # S, I, R automatically added!
 #' }
 #'
 #' @export
 build_diagram <- function(..., reset_ids = TRUE) {
   specs <- list(...)
 
+  # Extract implicit stocks from flow connections
+  # This allows stocks referenced in flows to be automatically included
+  implicit_stocks <- list()
+  for (spec in specs) {
+    if (inherits(spec, "flow_connection_complete")) {
+      # Extract source stock if present
+      if (!is.null(spec$from_spec)) {
+        implicit_stocks[[spec$from]] <- spec$from_spec
+      }
+      # Extract target stock if present
+      if (!is.null(spec$to_spec)) {
+        implicit_stocks[[spec$to]] <- spec$to_spec
+      }
+    }
+  }
+
+  # Merge implicit stocks with explicit stocks (explicit takes precedence)
+  explicit_stock_names <- character(0)
+  for (spec in specs) {
+    if (inherits(spec, "stock_spec")) {
+      explicit_stock_names <- c(explicit_stock_names, spec$name)
+    }
+  }
+
+  # Add implicit stocks that aren't already explicit
+  for (stock_name in names(implicit_stocks)) {
+    if (!(stock_name %in% explicit_stock_names)) {
+      # Add implicit stock to specs list
+      specs <- c(specs, list(implicit_stocks[[stock_name]]))
+    }
+  }
+
   # Start with empty diagram
   diagram <- stock_flow_diagram(reset_ids = reset_ids)
 
-  # First pass: add all stocks
+  # First pass: add all stocks (now includes implicit stocks!)
   for (spec in specs) {
     if (inherits(spec, "stock_spec")) {
       diagram <- add_stock(diagram, spec$name, initial = spec$initial)

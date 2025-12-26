@@ -7,16 +7,22 @@
 lhs \%->\% rhs
 }
 \arguments{
-\item{lhs}{Left-hand side: stock_spec or flow_spec}
+\item{lhs}{Left-hand side: stock_spec or flow_spec (or NULL for external inflow)}
 
-\item{rhs}{Right-hand side: flow_spec or stock_spec}
+\item{rhs}{Right-hand side: flow_spec or stock_spec (or NULL for external outflow)}
 }
 \value{
-A partial flow connection (class "flow_connection")
+A partial or complete flow connection
 }
 \description{
 The %->% operator creates a flow connection between two stocks.
 It can be chained: stock1 %->% flow1 %->% stock2
+}
+\details{
+As of version 0.2.0, stocks referenced in flow connections are automatically
+included in the diagram when finalize() is called, eliminating the need to
+explicitly add them with %+%. This makes the API more concise while remaining
+fully backward compatible.
 }
 \examples{
 \dontrun{
@@ -31,6 +37,13 @@ infection <- flow("infection",
 
 # Connect: S \%->\% infection \%->\% I
 connection <- S \%->\% infection \%->\% I
+
+# Stocks are automatically included when finalized
+diagram <- finalize(connection)  # S and I automatically added!
+
+# External flows use NULL
+inflow <- NULL \%->\% some_flow \%->\% Stock
+outflow <- Stock \%->\% some_flow \%->\% NULL
 }
 
 }

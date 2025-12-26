@@ -16,7 +16,16 @@ StockFlowDiagram object
 }
 \description{
 Takes a list of stock, flow, and variable specifications and
-constructs a StockFlowDiagram.
+constructs a StockFlowDiagram. As of version 0.2.0, stocks referenced
+in flow connections are automatically included, so explicit stock
+specifications are optional if they appear in connections.
+}
+\details{
+Stocks can be specified explicitly or implicitly:
+- Explicit: Pass stock specs directly as arguments
+- Implicit: Stocks referenced in flow connections are automatically added
+- Isolated stocks (no flows) must be specified explicitly
+- Explicit specifications take precedence over implicit
 }
 \examples{
 \dontrun{
@@ -33,12 +42,18 @@ recovery <- flow("recovery",
   rate = function(inputs, params) params$gamma * inputs$I
 )
 
-# Build diagram
-sir <- build_diagram(
+# Old style (explicit stocks - still works)
+sir1 <- build_diagram(
   S, I, R,
   S \%->\% infection \%->\% I,
   I \%->\% recovery \%->\% R
 )
+
+# New style (automatic stock inclusion)
+sir2 <- build_diagram(
+  S \%->\% infection \%->\% I,
+  I \%->\% recovery \%->\% R
+)  # S, I, R automatically added!
 }
 
 }
