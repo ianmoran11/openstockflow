@@ -1,0 +1,145 @@
+url: https://ianmoran11.github.io/openstockflow/
+
+template:
+  bootstrap: 5
+  bootswatch: cosmo
+  theme: arrow-light
+  bslib:
+    base_font: {google: "Atkinson Hyperlegible"}
+    heading_font: {google: "Atkinson Hyperlegible"}
+    code_font: {google: "JetBrains Mono"}
+
+navbar:
+  structure:
+    left:  [intro, reference, articles, tutorials, news]
+    right: [search, github]
+  components:
+    home: ~
+    reference:
+      text: Reference
+      href: reference/index.html
+    articles:
+      text: Articles
+      menu:
+      - text: Quick Start (Algebraic API)
+        href: articles/quickstart-algebraic.html
+      - text: Quick Start (Pipe-Based API)
+        href: articles/quickstart.html
+      - text: -------
+      - text: Introduction (Algebraic API)
+        href: articles/introduction-algebraic.html
+      - text: Introduction (Pipe-Based API)
+        href: articles/introduction.html
+      - text: -------
+      - text: Composition (Algebraic API)
+        href: articles/composition-algebraic.html
+      - text: Composition (Pipe-Based API)
+        href: articles/composition.html
+      - text: -------
+      - text: Mathematical Foundations (Algebraic API)
+        href: articles/mathematical-foundations-algebraic.html
+      - text: Mathematical Foundations (Pipe-Based API)
+        href: articles/mathematical-foundations.html
+    github:
+      icon: fab fa-github fa-lg
+      href: https://github.com/ianmoran11/openstockflow
+      aria-label: GitHub
+
+reference:
+- title: Core Stock-Flow Modeling (Pipe-Based API)
+  desc: >
+    Build stock-flow diagrams using the pipe-based API with magrittr pipes.
+  contents:
+  - stock_flow_diagram
+  - add_stock
+  - add_flow
+  - add_link
+  - add_variable
+  - add_sum_variable
+
+- title: Algebraic API
+  desc: >
+    Build stock-flow diagrams using algebraic operators and mathematical notation.
+  contents:
+  - stock
+  - flow
+  - variable
+  - sumvar
+  - "`%->%`"
+  - "`%+%`"
+  - finalize
+  - build_diagram
+
+- title: Compositional Modeling
+  desc: >
+    Compose models using categorical operations (decorated cospans).
+  contents:
+  - open_diagram
+  - compose_diagrams
+  - stratify_diagram
+
+- title: ODE Generation and Simulation
+  desc: >
+    Generate ordinary differential equations and solve them numerically.
+  contents:
+  - generate_ode
+  - solve_diagram
+
+- title: Visualization
+  desc: >
+    Visualize stock-flow diagrams and simulation results.
+  contents:
+  - plot.StockFlowDiagram
+  - to_graphviz
+  - plot_solution
+  - phase_plot
+
+- title: S4 Classes
+  desc: >
+    Formal S4 class definitions for diagram elements.
+  contents:
+  - Stock-class
+  - Flow-class
+  - Link-class
+  - AuxiliaryVariable-class
+  - SumVariable-class
+  - StockFlowDiagram-class
+
+- title: Utilities
+  desc: >
+    Helper functions and utilities.
+  contents:
+  - n_stocks
+  - n_flows
+  - stock_names
+  - flow_names
+  - get_stock_by_name
+  - get_flow_by_name
+  - reset_id_counter
+
+home:
+  title: "openstockflow • Categorical Stock-Flow Modeling"
+  description: >
+    Build compositional stock-flow models using category theory and functorial semantics.
+    Supports both pipe-based and algebraic APIs.
+
+articles:
+- title: Getting Started
+  navbar: ~
+  contents:
+  - quickstart-algebraic
+  - quickstart
+
+- title: Detailed Guides
+  navbar: ~
+  contents:
+  - introduction-algebraic
+  - introduction
+  - composition-algebraic
+  - composition
+
+- title: Advanced Topics
+  navbar: ~
+  contents:
+  - mathematical-foundations-algebraic
+  - mathematical-foundations
