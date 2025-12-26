@@ -1,5 +1,8 @@
 url: https://ianmoran11.github.io/openstockflow/
 
+build:
+  articles: false
+
 template:
   bootstrap: 5
   bootswatch: cosmo
