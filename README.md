@@ -3,7 +3,10 @@
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/ianmoran11/openstockflow/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/ianmoran11/openstockflow/actions/workflows/R-CMD-check.yaml)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![pkgdown](https://github.com/ianmoran11/openstockflow/actions/workflows/pkgdown.yaml/badge.svg)](https://github.com/ianmoran11/openstockflow/actions/workflows/pkgdown.yaml)
 <!-- badges: end -->
+
+> 📖 **[View full documentation website →](https://ianmoran11.github.io/openstockflow/)**
 
 **openstockflow** brings categorical stock-flow modeling to R, enabling you to build compositional dynamical systems using decorated cospans and functorial semantics.
 

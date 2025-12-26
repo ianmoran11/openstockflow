@@ -11,13 +11,14 @@ Implements categorical stock-flow modeling using decorated cospans and functoria
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/ianmoran/openstockflow}
-  \item Report bugs at \url{https://github.com/ianmoran/openstockflow/issues}
+  \item \url{https://github.com/ianmoran11/openstockflow}
+  \item \url{https://ianmoran11.github.io/openstockflow/}
+  \item Report bugs at \url{https://github.com/ianmoran11/openstockflow/issues}
 }
 
 }
 \author{
-\strong{Maintainer}: Ian Moran \email{your.email@example.com}
+\strong{Maintainer}: Ian Moran \email{ian.moran11@gmail.com}
 
 }
 \keyword{internal}
