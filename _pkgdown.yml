@@ -49,6 +49,16 @@ navbar:
       aria-label: GitHub
 
 reference:
+- title: Package Overview
+  desc: >
+    High-level documentation topics covering major features and concepts.
+  contents:
+  - diagram-construction
+  - algebraic-api
+  - composition
+  - semantics
+  - visualization
+
 - title: Core Stock-Flow Modeling (Pipe-Based API)
   desc: >
     Build stock-flow diagrams using the pipe-based API with magrittr pipes.
@@ -72,6 +82,9 @@ reference:
   - "`%+%`"
   - finalize
   - build_diagram
+  - model
+  - compile
+  - "`+.model_builder`"
 
 - title: Compositional Modeling
   desc: >
@@ -88,14 +101,18 @@ reference:
   contents:
   - generate_ode
   - solve_diagram
+  - extract_parameters
+  - check_ode_wellposed
 
 - title: Visualization
   desc: >
     Visualize stock-flow diagrams and simulation results.
   contents:
   - plot.StockFlowDiagram
+  - plot_diagram
   - to_graphviz
   - plot_solution
+  - summary_plot
   - phase_plot
 
 - title: S4 Classes
