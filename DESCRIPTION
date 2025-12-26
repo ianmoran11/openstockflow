@@ -3,7 +3,7 @@ Type: Package
 Title: Categorical Stock-Flow Modeling with Compositional Diagrams
 Version: 0.1.0
 Authors@R: c(
-    person("Ian", "Moran", email = "your.email@example.com", role = c("aut", "cre"))
+    person("Ian", "Moran", email = "ian.moran11@gmail.com", role = c("aut", "cre"))
     )
 Description: Implements categorical stock-flow modeling using decorated cospans
     and functorial semantics. Enables compositional model building where complex
@@ -32,8 +32,8 @@ Suggests:
     knitr (>= 1.40),
     rmarkdown (>= 2.0)
 VignetteBuilder: knitr
-URL: https://github.com/ianmoran/openstockflow
-BugReports: https://github.com/ianmoran/openstockflow/issues
+URL: https://github.com/ianmoran11/openstockflow, https://ianmoran11.github.io/openstockflow/
+BugReports: https://github.com/ianmoran11/openstockflow/issues
 Collate:
     'openstockflow-package.R'
     'classes.R'
