@@ -74,9 +74,10 @@ reference:
   desc: >
     Compose models using categorical operations (decorated cospans).
   contents:
-  - open_diagram
-  - compose_diagrams
-  - stratify_diagram
+  - as_open_diagram
+  - compose
+  - close_diagram
+  - set_interface
 
 - title: ODE Generation and Simulation
   desc: >
@@ -104,6 +105,8 @@ reference:
   - AuxiliaryVariable-class
   - SumVariable-class
   - StockFlowDiagram-class
+  - OpenStockFlowDiagram-class
+  - DecoratedCospan-class
 
 - title: Utilities
   desc: >
@@ -111,10 +114,14 @@ reference:
   contents:
   - n_stocks
   - n_flows
+  - n_links
   - stock_names
   - flow_names
   - get_stock_by_name
   - get_flow_by_name
+  - get_variable_by_name
+  - initial_state
+  - validate_diagram
   - reset_id_counter
 
 home:
