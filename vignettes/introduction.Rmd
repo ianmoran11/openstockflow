@@ -202,7 +202,8 @@ seir <- stock_flow_diagram(reset_ids = TRUE) %>%
       params$gamma * inputs$I
     }
   ) %>%
-  add_link(from = "N", to = "infection")
+  add_link(from = "N", to = "infection") %>%
+  add_link(from = "I", to = "infection")
 
 print(seir)
 ```

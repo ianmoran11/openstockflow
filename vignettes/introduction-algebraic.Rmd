@@ -193,7 +193,8 @@ seir <- finalize(seir_spec, reset_ids = TRUE)
 library(magrittr)
 seir <- seir %>%
   add_sum_variable("N", stocks = c("S", "E", "I", "R")) %>%
-  add_link(from = "N", to = "infection")
+  add_link(from = "N", to = "infection") %>%
+  add_link(from = "I", to = "infection")
 
 print(seir)
 ```
