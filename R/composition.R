@@ -428,12 +428,19 @@ compose <- function(left, right, interface = NULL) {
     remapped_right_leg[i] <- result$id_map[as.character(stock_id)]
   }
 
+  # Remap right diagram's right_foot through id_map
+  remapped_right_foot <- integer(length(right@right_foot))
+  for (i in seq_along(right@right_foot)) {
+    stock_id <- right@right_foot[i]
+    remapped_right_foot[i] <- result$id_map[as.character(stock_id)]
+  }
+
   # Create composed open diagram
-  # Left foot from left diagram, right foot from right diagram
+  # Left foot from left diagram, right foot from right diagram (remapped)
   composed <- new("OpenStockFlowDiagram",
     apex = result$diagram,
     left_foot = left@left_foot,
-    right_foot = right@right_foot,
+    right_foot = remapped_right_foot,
     left_leg = left@left_leg,
     right_leg = remapped_right_leg  # Remapped right diagram's right leg
   )
