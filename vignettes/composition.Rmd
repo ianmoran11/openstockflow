@@ -231,12 +231,21 @@ c <- stock_flow_diagram(reset_ids = TRUE) %>%
   add_stock("W", initial = 0)
 
 # Compose left-to-right: (A ∘ B) ∘ C
-ab <- compose(a, b, interface = "Y")
-abc_left <- compose(ab, c, interface = "Z")
+# Use explicit open diagrams to control interfaces
+a_open <- as_open_diagram(a, right_interface = "Y")
+b_open1 <- as_open_diagram(b, left_interface = "Y", right_interface = "Z")
+ab <- compose(a_open, b_open1)
+
+c_open1 <- as_open_diagram(c, left_interface = "Z")
+abc_left <- compose(ab, c_open1)
 
 # Compose right-to-left: A ∘ (B ∘ C)
-bc <- compose(b, c, interface = "Z")
-abc_right <- compose(a, bc, interface = "Y")
+b_open2 <- as_open_diagram(b, left_interface = "Y", right_interface = "Z")
+c_open2 <- as_open_diagram(c, left_interface = "Z")
+bc <- compose(b_open2, c_open2)
+
+a_open2 <- as_open_diagram(a, right_interface = "Y")
+abc_right <- compose(a_open2, bc)
 
 # Both result in the same structure (up to ID renaming)
 cat("Left association stocks:", n_stocks(close_diagram(abc_left)), "\n")
