@@ -472,6 +472,13 @@ pp_spec <- Prey %+% Predator %+%
 
 pp_model <- finalize(pp_spec, reset_ids = TRUE)
 
+# Add missing links for flows that need inputs
+library(magrittr)
+pp_model <- pp_model %>%
+  add_link(from = "Predator", to = "predation") %>%
+  add_link(from = "Prey", to = "predator_growth") %>%
+  add_link(from = "Predator", to = "predator_growth")
+
 print(pp_model)
 ```
 
